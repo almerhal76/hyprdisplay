@@ -637,7 +637,18 @@ const isSingleInstance = app.requestSingleInstanceLock()
 if (!isSingleInstance) {
   app.quit()
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_, commandLine) => {
+    if (commandLine.includes('--apply')) {
+      console.log('Second instance was an --apply command. Ignoring UI popup and applying config.')
+      spawn('hyprctl', ['reload'])
+      return
+    }
+
+    if (commandLine.includes('--hidden')) {
+      console.log('Second instance was started hidden. Ignoring UI popup.')
+      return
+    }
+
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.show()
