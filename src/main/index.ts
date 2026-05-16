@@ -7,6 +7,7 @@ import { promisify } from 'util'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
+import { autoUpdater } from 'electron-updater'
 
 const execAsync = promisify(exec)
 
@@ -366,6 +367,57 @@ ipcMain.handle('exit_app', () => {
   app.quit()
 })
 
+ipcMain.handle('check_for_updates', async () => {
+  try {
+    const result = await autoUpdater.checkForUpdates()
+    return result
+  } catch (err: any) {
+    console.error('Failed to check for updates:', err)
+    throw err.message
+  }
+})
+
+ipcMain.handle('quit_and_install', async () => {
+  console.log('Relaunching app to install updates...')
+  ; (app as any).isQuitting = true
+  autoUpdater.quitAndInstall()
+})
+
+function initializeUpdater(): void {
+  autoUpdater.logger = console
+  autoUpdater.autoDownload = true
+
+  autoUpdater.on('checking-for-update', () => {
+    console.log('Checking for update...')
+    mainWindow?.webContents.send('update_status', 'checking')
+  })
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('Update available:', info.version)
+    mainWindow?.webContents.send('update_status', 'available', info.version)
+  })
+
+  autoUpdater.on('update-not-available', () => {
+    console.log('Update not available.')
+    mainWindow?.webContents.send('update_status', 'not-available')
+  })
+
+  autoUpdater.on('error', (err) => {
+    console.error('Update error:', err)
+    mainWindow?.webContents.send('update_status', 'error', err.message)
+  })
+
+  autoUpdater.on('download-progress', (progressObj) => {
+    console.log(`Download progress: ${progressObj.percent}%`)
+    mainWindow?.webContents.send('update_progress', progressObj.percent)
+  })
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('Update downloaded:', info.version)
+    mainWindow?.webContents.send('update_status', 'downloaded', info.version)
+  })
+}
+
 ipcMain.handle('set_autostart', async (_, enabled: boolean) => {
   if (process.platform !== 'linux') return false
   
@@ -409,7 +461,7 @@ ipcMain.handle('get_autostart', async () => {
   return fs.existsSync(desktopFilePath)
 })
 
-function registerDesktopEntry(): void {
+export function registerDesktopEntry(): void {
   if (process.platform !== 'linux') return
 
   const desktopDir = path.join(os.homedir(), '.local/share/applications')
@@ -550,6 +602,16 @@ if (!isSingleInstance) {
   createWindow()
   createTray()
   syncAutostartPath()
+  initializeUpdater()
+
+  // Auto-check for updates shortly after startup (only in production)
+  setTimeout(() => {
+    if (!is.dev) {
+      autoUpdater.checkForUpdatesAndNotify().catch(err => {
+        console.error('Failed check on startup:', err)
+      })
+    }
+  }, 5000)
 
   // Auto-trigger identifier and reload configs after startup (delay for better reliability)
   setTimeout(() => {

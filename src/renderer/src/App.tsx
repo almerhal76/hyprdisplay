@@ -174,29 +174,89 @@ function App() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [appVersion, setAppVersion] = useState("v0.0.0");
   const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error'>('idle');
+  const [updateProgress, setUpdateProgress] = useState(0);
+  const [newVersion, setNewVersion] = useState("");
 
   useEffect(() => {
     getVersion().then(v => setAppVersion(`v${v}`)).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    console.log("Staging new profile state:", isCreatingNew);
+  }, [isCreatingNew]);
+
+  useEffect(() => {
+    const api = (window as any).api;
+    if (!api || !api.on) return;
+
+    const unsubStatus = api.on('update_status', (status: string, val?: string) => {
+      console.log('Update Status Event:', status, val);
+      if (status === 'checking') {
+        setUpdateStatus('checking');
+        setIsUpdating(true);
+      } else if (status === 'available') {
+        setUpdateStatus('available');
+        if (val) setNewVersion(val);
+        setIsUpdating(false);
+        showToast(`Update v${val} available! Downloading in background...`, 'info', 'Update Available');
+      } else if (status === 'not-available') {
+        setUpdateStatus('not-available');
+        setIsUpdating(false);
+        showToast('You are using the latest version.', 'success', 'Up to Date');
+      } else if (status === 'downloaded') {
+        setUpdateStatus('downloaded');
+        if (val) setNewVersion(val);
+        showToast(`Update v${val} downloaded! Click "Install" to apply.`, 'success', 'Update Downloaded');
+      } else if (status === 'error') {
+        setUpdateStatus('error');
+        setIsUpdating(false);
+        showToast(`Update failed: ${val}`, 'error', 'Update Error');
+      }
+    });
+
+    const unsubProgress = api.on('update_progress', (percent: number) => {
+      setUpdateStatus('downloading');
+      setUpdateProgress(Math.round(percent));
+    });
+
+    return () => {
+      unsubStatus();
+      unsubProgress();
+    };
+  }, [appVersion]);
+
   const checkForUpdates = async () => {
     setIsUpdating(true);
+    setUpdateStatus('checking');
     try {
-      // Fetch latest release from GitHub API
-      const response = await fetch('https://api.github.com/repos/almerhal76/hyprdisplay/releases/latest');
-      if (!response.ok) throw new Error('Failed to fetch updates');
-      
-      const data = await response.json();
-      const latestVersion = data.tag_name; // e.g., "v0.2.0"
-      
-      // Basic version comparison
-      if (latestVersion && latestVersion !== appVersion) {
-        showToast(`New version ${latestVersion} is available!`, "info", "Update Available");
-      } else {
-        showToast("You are using the latest version.", "success", "Up to Date");
-      }
-    } catch (err) {
+      await invoke('check_for_updates');
+    } catch (err: any) {
       console.error('Update check failed:', err);
+      // Fallback to fetch from GitHub directly (e.g. during development/local run)
+      try {
+        const response = await fetch('https://api.github.com/repos/almerhal76/hyprdisplay/releases/latest');
+        if (response.ok) {
+          const data = await response.json();
+          const latestVersion = data.tag_name; // e.g., "v0.1.1"
+          const parsedLatest = latestVersion.replace('v', '');
+          const parsedCurrent = appVersion.replace('v', '');
+          if (parsedLatest !== parsedCurrent && parsedLatest !== '0.0.0' && parsedCurrent !== '0.0.0') {
+            setUpdateStatus('available');
+            setNewVersion(latestVersion);
+            showToast(`New version ${latestVersion} is available!`, 'info', 'Update Available');
+          } else {
+            setUpdateStatus('not-available');
+            showToast('You are using the latest version.', 'success', 'Up to Date');
+          }
+        } else {
+          setUpdateStatus('error');
+          showToast('Failed to check for updates.', 'error');
+        }
+      } catch (e) {
+        setUpdateStatus('error');
+        showToast('Failed to check for updates.', 'error');
+      }
     } finally {
       setIsUpdating(false);
     }
@@ -1708,18 +1768,48 @@ function App() {
                     </div>
                     <div>
                       <div style={{ fontSize: '14px', color: 'white', marginBottom: '4px' }}>Software Update</div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-dim)' }}>Check for the latest version</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-dim)' }}>
+                        {updateStatus === 'downloading' ? `Downloading update: ${updateProgress}%` : 
+                         updateStatus === 'downloaded' ? `Update v${newVersion} is ready!` : 
+                         `Check for the latest version`}
+                      </div>
                     </div>
                   </div>
-                  <button 
-                    className="btn-secondary" 
-                    style={{ padding: '6px 12px', fontSize: '12px', border: '1px solid var(--border)' }}
-                    onClick={checkForUpdates}
-                    disabled={isUpdating}
-                  >
-                    {isUpdating ? 'Checking...' : 'Check Now'}
-                  </button>
+                  {updateStatus === 'downloaded' ? (
+                    <button 
+                      className="btn-primary" 
+                      style={{ padding: '6px 12px', fontSize: '12px', background: 'var(--accent)', color: 'white', border: 'none', cursor: 'pointer', boxShadow: '0 0 12px rgba(99, 102, 241, 0.4)', borderRadius: '8px', fontWeight: 'bold' }}
+                      onClick={async () => {
+                        await invoke('quit_and_install');
+                      }}
+                    >
+                      Install & Restart
+                    </button>
+                  ) : updateStatus === 'downloading' ? (
+                    <div style={{ fontSize: '12px', color: 'var(--accent)', fontWeight: 'bold' }}>
+                      {updateProgress}%
+                    </div>
+                  ) : (
+                    <button 
+                      className="btn-secondary" 
+                      style={{ padding: '6px 12px', fontSize: '12px', border: '1px solid var(--border)' }}
+                      onClick={checkForUpdates}
+                      disabled={isUpdating}
+                    >
+                      {isUpdating ? 'Checking...' : 'Check Now'}
+                    </button>
+                  )}
                 </div>
+                {updateStatus === 'downloading' && (
+                  <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', marginTop: '12px', overflow: 'hidden' }}>
+                    <motion.div 
+                      style={{ height: '100%', background: 'var(--accent)' }}
+                      initial={{ width: 0 }}
+                      animate={{ width: `${updateProgress}%` }}
+                      transition={{ duration: 0.2 }}
+                    />
+                  </div>
+                )}
               </div>
 
               <div style={{ paddingTop: '20px', borderTop: '1px solid var(--border)' }}>

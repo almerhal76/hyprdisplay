@@ -2,6 +2,10 @@
   "name": "hyprdisplay",
   "version": "0.1.1",
   "description": "Desktop App for Hyprland Display Management",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/almerhal76/hyprdisplay.git"
+  },
   "main": "./out/main/index.js",
   "author": "alfian",
   "scripts": {
@@ -21,6 +25,7 @@
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "axios": "^1.13.5",
+    "electron-updater": "^6.8.3",
     "framer-motion": "^11.11.11",
     "lucide-react": "^0.473.0",
     "sonner": "^1.7.0"
@@ -31,7 +36,6 @@
     "@electron-toolkit/tsconfig": "^2.0.0",
     "@types/node": "^22.19.19",
     "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^4.3.3",
     "electron": "^33.2.0",
