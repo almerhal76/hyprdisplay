@@ -461,7 +461,8 @@ function App() {
         setRunInBackground(bg);
 
         const config = await invoke<string>("get_custom_config", { filename: "execs.conf" });
-        setLaunchOnStartup(config.includes("exec-once = display-settings"));
+        const exePath = await invoke<string>("get_executable_path");
+        setLaunchOnStartup(config.includes(`${exePath} --apply`));
 
         // 3. Load last profile
         const last = await invoke<string>("get_last_profile");
@@ -589,8 +590,9 @@ function App() {
       await invoke('apply_workspace_config', { config: workspaceConfig });
 
       if (primaryMonitor) {
+        const exePath = await invoke<string>('get_executable_path');
         await invoke('update_custom_config', { filename: 'env.conf', content: `env = WAYLANDDRV_PRIMARY_MONITOR,${primaryMonitor.name}` });
-        await invoke('update_custom_config', { filename: 'execs.conf', content: `exec-once = xrandr --output ${primaryMonitor.name} --primary` });
+        await invoke('update_custom_config', { filename: 'execs.conf', content: `exec-once = ${exePath} --apply` });
       }
 
       // Save as last profile on successful apply

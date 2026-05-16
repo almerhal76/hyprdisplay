@@ -156,6 +156,10 @@ ipcMain.handle('apply_hyprland_config', async (_, args: { config: string }) => {
   return
 })
 
+ipcMain.handle('get_executable_path', async () => {
+  return process.env.APPIMAGE || process.execPath
+})
+
 ipcMain.handle('apply_workspace_config', async (_, args: { config: string }) => {
   const filePath = path.join(os.homedir(), '.config/hypr/workspaces.conf')
   const dir = path.dirname(filePath)
@@ -444,6 +448,70 @@ StartupWMClass=HyprDisplay
   }
 }
 
+function syncAutostartPath(): void {
+  const currentPath = process.env.APPIMAGE || process.execPath
+  const autostartDir = path.join(os.homedir(), '.config/autostart')
+  const desktopFilePath = path.join(autostartDir, 'hyprdisplay.desktop')
+
+  if (fs.existsSync(desktopFilePath)) {
+    try {
+      const content = fs.readFileSync(desktopFilePath, 'utf-8')
+      if (!content.includes(`Exec=${currentPath}`)) {
+        console.log('Syncing autostart path to current executable:', currentPath)
+        const lines = content.split('\n').map(line => {
+          if (line.startsWith('Exec=')) return `Exec=${currentPath}`
+          return line
+        })
+        fs.writeFileSync(desktopFilePath, lines.join('\n'))
+      }
+    } catch (err) {
+      console.error('Failed to sync autostart path:', err)
+    }
+  }
+
+  // Also sync the execs.conf path
+  const execsFilePath = path.join(os.homedir(), '.config/hypr/custom/execs.conf')
+  if (fs.existsSync(execsFilePath)) {
+    try {
+      let content = fs.readFileSync(execsFilePath, 'utf-8')
+      const startMarker = '# [nwg-react-displays] start'
+      const endMarker = '# [nwg-react-displays] end'
+
+      if (content.includes(startMarker) && content.includes(endMarker)) {
+        const lines = content.split('\n')
+        const newLines: string[] = []
+        let inSection = false
+
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (trimmed === startMarker) {
+            inSection = true
+            newLines.push(line)
+            newLines.push(`exec-once = ${currentPath} --apply`)
+            continue
+          }
+          if (trimmed === endMarker) {
+            inSection = false
+            newLines.push(line)
+            continue
+          }
+          if (!inSection) {
+            newLines.push(line)
+          }
+        }
+        
+        const newContent = newLines.join('\n')
+        if (content !== newContent) {
+          console.log('Syncing execs.conf path to current executable:', currentPath)
+          fs.writeFileSync(execsFilePath, newContent)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to sync execs.conf path:', err)
+    }
+  }
+}
+
 const isSingleInstance = app.requestSingleInstanceLock()
 
 if (!isSingleInstance) {
@@ -477,11 +545,14 @@ if (!isSingleInstance) {
 
   createWindow()
   createTray()
+  syncAutostartPath()
 
-  // Auto-trigger identifier saat startup (delay 1.5 detik agar lebih smooth)
+  // Auto-trigger identifier and reload configs after startup (delay for better reliability)
   setTimeout(() => {
+    console.log('Performing startup monitor sync...')
+    spawn('hyprctl', ['reload'])
     identifyMonitors()
-  }, 1500)
+  }, 2000)
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
