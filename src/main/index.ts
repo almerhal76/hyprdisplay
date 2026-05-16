@@ -160,6 +160,10 @@ ipcMain.handle('get_executable_path', async () => {
   return process.env.APPIMAGE || process.execPath
 })
 
+ipcMain.handle('get_app_version', async () => {
+  return app.getVersion()
+})
+
 ipcMain.handle('apply_workspace_config', async (_, args: { config: string }) => {
   const filePath = path.join(os.homedir(), '.config/hypr/workspaces.conf')
   const dir = path.dirname(filePath)

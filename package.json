@@ -1,6 +1,6 @@
 {
   "name": "hyprdisplay",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Desktop App for Hyprland Display Management",
   "main": "./out/main/index.js",
   "author": "alfian",
@@ -31,6 +31,7 @@
     "@electron-toolkit/tsconfig": "^2.0.0",
     "@types/node": "^22.19.19",
     "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^4.3.3",
     "electron": "^33.2.0",

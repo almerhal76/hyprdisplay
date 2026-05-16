@@ -11,7 +11,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { 
   RefreshCcw, Save, Plus, Minus, ZoomIn, ZoomOut, Layers, X, Square, Check, Layout, ChevronDown, Monitor as ScreenIcon, Trash2, Settings, Power, Download, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Grid, Monitor, PanelLeft, PanelRight, PanelTop, PanelBottom
 } from "lucide-react";
-const getVersion = async () => "0.1.0";
+const getVersion = async () => invoke<string>('get_app_version');
 import "./App.css";
 import logoSmall from './assets/logo_small.png'
 
@@ -172,7 +172,7 @@ function App() {
     setTimeout(() => setToast(null), 3000);
   };
   const [isUpdating, setIsUpdating] = useState(false);
-  const [appVersion, setAppVersion] = useState("v0.1.0");
+  const [appVersion, setAppVersion] = useState("v0.0.0");
   const [isCreatingNew, setIsCreatingNew] = useState(false);
 
   useEffect(() => {
