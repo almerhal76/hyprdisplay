@@ -177,6 +177,7 @@ function App() {
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error'>('idle');
   const [updateProgress, setUpdateProgress] = useState(0);
   const [newVersion, setNewVersion] = useState("");
+  const [startHidden, setStartHidden] = useState(false);
 
   useEffect(() => {
     getVersion().then(v => setAppVersion(`v${v}`)).catch(() => {});
@@ -280,6 +281,10 @@ function App() {
     // Check autostart status from system
     invoke<boolean>('get_autostart').then(enabled => {
       setLaunchOnStartup(enabled);
+    }).catch(() => {});
+
+    invoke<boolean>('get_start_hidden').then(hidden => {
+      setStartHidden(hidden);
     }).catch(() => {});
 
     return () => clearTimeout(timer);
@@ -1758,6 +1763,45 @@ function App() {
                     />
                   </div>
                 </div>
+
+                {/* Start Hidden Sub-option */}
+                <motion.div 
+                  initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                  animate={{ 
+                    opacity: launchOnStartup ? 1 : 0.4, 
+                    height: launchOnStartup ? 'auto' : '0px',
+                    marginTop: launchOnStartup ? '16px' : '0px',
+                    pointerEvents: launchOnStartup ? 'auto' : 'none'
+                  }}
+                  transition={{ duration: 0.3 }}
+                  style={{ 
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    paddingLeft: '16px', borderLeft: '2px solid var(--border)', overflow: 'hidden'
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: '13px', color: 'white', marginBottom: '2px' }}>Start Hidden</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-dim)' }}>Start minimized to the system tray</div>
+                  </div>
+                  <div 
+                    onClick={async () => {
+                      if (!launchOnStartup) return;
+                      const newState = !startHidden;
+                      setStartHidden(newState);
+                      await invoke('set_start_hidden', newState);
+                      showToast(`Start hidden ${newState ? 'enabled' : 'disabled'}`, 'info');
+                    }}
+                    style={{ 
+                      width: '36px', height: '20px', borderRadius: '20px', background: startHidden ? 'var(--accent)' : 'rgba(255,255,255,0.1)', 
+                      position: 'relative', cursor: 'pointer', transition: 'all 0.3s'
+                    }}
+                  >
+                    <motion.div 
+                      animate={{ x: startHidden ? 18 : 2 }}
+                      style={{ width: '16px', height: '16px', borderRadius: '50%', background: 'white', position: 'absolute', top: 2, left: 0 }}
+                    />
+                  </div>
+                </motion.div>
               </div>
 
               <div className="settings-group" style={{ marginBottom: '24px', paddingTop: '20px', borderTop: '1px solid var(--border)' }}>

@@ -431,10 +431,21 @@ ipcMain.handle('set_autostart', async (_, enabled: boolean) => {
     }
 
     if (enabled) {
+      const settingsPath = path.join(os.homedir(), '.config/nwg-react-displays/settings.json')
+      let startHidden = false
+      if (fs.existsSync(settingsPath)) {
+        try {
+          const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+          startHidden = settings.start_hidden !== undefined ? settings.start_hidden : false
+        } catch (e) {}
+      }
+
+      const execValue = startHidden ? `${executablePath} --hidden` : executablePath
+
       const desktopContent = `[Desktop Entry]
 Name=hyprdisplay
 Comment=Hyprland Monitor Manager
-Exec=${executablePath}
+Exec=${execValue}
 Icon=hyprdisplay
 Terminal=false
 Type=Application
@@ -453,6 +464,47 @@ X-GNOME-Autostart-enabled=true
     console.error('Failed to handle autostart:', err)
     return false
   }
+})
+
+ipcMain.handle('get_start_hidden', async () => {
+  const filePath = path.join(os.homedir(), '.config/nwg-react-displays/settings.json')
+  if (fs.existsSync(filePath)) {
+    try {
+      const settings = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+      return settings.start_hidden !== undefined ? settings.start_hidden : false
+    } catch (e) { }
+  }
+  return false
+})
+
+ipcMain.handle('set_start_hidden', async (_, enabled: boolean) => {
+  const filePath = path.join(os.homedir(), '.config/nwg-react-displays/settings.json')
+  let settings: any = {}
+  if (fs.existsSync(filePath)) {
+    try { settings = JSON.parse(fs.readFileSync(filePath, 'utf-8')) } catch (e) { }
+  }
+  settings.start_hidden = enabled
+  const dir = path.dirname(filePath)
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(filePath, JSON.stringify(settings, null, 2))
+
+  // Re-sync autostart file if autostart is currently enabled
+  const autostartFilePath = path.join(os.homedir(), '.config/autostart/hyprdisplay.desktop')
+  if (fs.existsSync(autostartFilePath)) {
+    const executablePath = process.env.APPIMAGE || process.execPath
+    const execValue = enabled ? `${executablePath} --hidden` : executablePath
+    try {
+      const content = fs.readFileSync(autostartFilePath, 'utf-8')
+      const lines = content.split('\n').map(line => {
+        if (line.startsWith('Exec=')) return `Exec=${execValue}`
+        return line
+      })
+      fs.writeFileSync(autostartFilePath, lines.join('\n'))
+    } catch (err) {
+      console.error('Failed to update autostart Exec flag:', err)
+    }
+  }
+  return true
 })
 
 ipcMain.handle('get_autostart', async () => {
@@ -512,10 +564,22 @@ function syncAutostartPath(): void {
   if (fs.existsSync(desktopFilePath)) {
     try {
       const content = fs.readFileSync(desktopFilePath, 'utf-8')
-      if (!content.includes(`Exec=${currentPath}`)) {
-        console.log('Syncing autostart path to current executable:', currentPath)
+      
+      const settingsPath = path.join(os.homedir(), '.config/nwg-react-displays/settings.json')
+      let startHidden = false
+      if (fs.existsSync(settingsPath)) {
+        try {
+          const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+          startHidden = settings.start_hidden !== undefined ? settings.start_hidden : false
+        } catch (e) {}
+      }
+
+      const expectedExec = startHidden ? `Exec=${currentPath} --hidden` : `Exec=${currentPath}`
+
+      if (!content.includes(expectedExec)) {
+        console.log('Syncing autostart path to expected Exec:', expectedExec)
         const lines = content.split('\n').map(line => {
-          if (line.startsWith('Exec=')) return `Exec=${currentPath}`
+          if (line.startsWith('Exec=')) return expectedExec
           return line
         })
         fs.writeFileSync(desktopFilePath, lines.join('\n'))
