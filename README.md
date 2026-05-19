@@ -1,6 +1,6 @@
 # 🖥️ HyprDisplay Manager
 
-![Version](https://img.shields.io/badge/version-0.1.0-blue)
+![Version](https://img.shields.io/badge/version-0.1.4-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Linux-orange)
 
@@ -11,28 +11,48 @@
 ## ✨ Key Features
 
 ### 🎨 Premium User Experience
-*   **Dynamic Splash Screen:** A high-tech initialization screen featuring a dual-gear rotation animation.
-*   **Shared Layout Transitions:** Seamlessly morphs from the loading splash screen into the main dashboard.
-*   **Modern Aesthetics:** Deep dark mode with glassmorphism effects and vibrant accent colors.
-*   **Responsive UI:** Adapts gracefully to any window size, from compact to full-screen.
+*   **Dynamic Splash Screen:** A high-tech initialization screen featuring a dynamic logo and rotating dual-gear animation, fully isolated to prevent side-effects during startup.
+*   **Adaptive Toolbar Stack:** Intelligent header control toolbar that automatically stacks vertically and centers on small or split-screen windows to prevent visual collisions, and seamlessly returns to side-by-side rows in full-screen.
+*   **Split-Screen Auto-Dismiss:** Active window resize listener that instantly closes the monitor editor panel when transitioning from a large screen to a narrow split-screen window, maximizing canvas space.
+*   **Accidental Block Prevention:** Hides the editor panel on small screens by default to prevent it from blocking the canvas layout, providing a clean and responsive space.
+*   **Modern Aesthetics:** Deep dark mode with glassmorphism effects, vibrant color harmony, and smooth hover micro-animations.
+*   **Responsive UI:** Adapts gracefully to any window size, from compact mobile-width windows to widescreen setups.
 
 ### 📐 Powerful Layout Management
 *   **Smart Layout Templates:** Instantly apply complex layouts:
     *   **Standard:** Triple horizontal or vertical stacks.
     *   **Dual Setup:** Side-by-side or stacked top-bottom configurations.
     *   **T-Shape:** Specialized 3-monitor layouts (Up, Down, Left, Right).
-*   **Real-time Synchronization:** Directly modifies `~/.config/hypr/monitors.conf` and triggers `hyprctl reload` for instant results.
+*   **Real-time Synchronization:** Directly modifies `~/.config/hypr/monitors.conf` and triggers `hyprctl reload` for instant display changes.
 *   **Profile Persistence:** Save multiple configuration profiles and switch between them instantly.
 
 ### ⚙️ Advanced Settings
+*   **Virtual & Android Monitors:** Seamlessly spawn virtual displays and stream them over VNC to mobile devices, with real-time connection status synchronization.
+*   **Self-Healing Control Sockets:** Automated stale VNC control socket cleaning and unique socket bindings to prevent server crashes and multiple instance conflicts.
 *   **System Integration:** Optional "Launch on Startup" and "Run in Background" (System Tray) support.
 *   **Auto-Update Engine:** Built-in version tracking against GitHub releases to keep your engine up to date.
 
----
-
 ## 📸 Screenshots
 
-*(Add your screenshots here to show off the gear animation and layout presets!)*
+<p align="center">
+  <h3>✨ Dynamic Splash Screen</h3>
+  <img src="assets/screenshots/splash.png" alt="Dynamic Splash Screen" width="800" style="border-radius: 12px; margin-bottom: 25px; border: 1px solid var(--border);" />
+
+  <h3>🖥️ Main Dashboard (Canvas Layout)</h3>
+  <img src="assets/screenshots/Dashboard.png" alt="Main Dashboard Layout" width="800" style="border-radius: 12px; margin-bottom: 25px; border: 1px solid var(--border);" />
+
+  <h3>📱 Virtual Display & VNC Stream Settings</h3>
+  <img src="assets/screenshots/vnc-settings.png" alt="Virtual & Android Monitors" width="800" style="border-radius: 12px; margin-bottom: 25px; border: 1px solid var(--border);" />
+
+  <h3>⚙️ Application Settings</h3>
+  <img src="assets/screenshots/app-settings.png" alt="Application Settings" width="800" style="border-radius: 12px; margin-bottom: 25px; border: 1px solid var(--border);" />
+
+  <h3>📁 Profile Manager</h3>
+  <img src="assets/screenshots/profile.png" alt="Profile Management" width="800" style="border-radius: 12px; margin-bottom: 25px; border: 1px solid var(--border);" />
+
+  <h3>➕ Create New Profile</h3>
+  <img src="assets/screenshots/add-profile.png" alt="Adding New Profile" width="800" style="border-radius: 12px; border: 1px solid var(--border);" />
+</p>
 
 ---
 

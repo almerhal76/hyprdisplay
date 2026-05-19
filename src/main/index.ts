@@ -513,6 +513,145 @@ ipcMain.handle('get_autostart', async () => {
   return fs.existsSync(desktopFilePath)
 })
 
+// Virtual displays and wayvnc process management state
+const activeWayVncProcesses = new Map<string, { process: any, port: number }>()
+
+ipcMain.handle('get_local_ips', async () => {
+  const interfaces = os.networkInterfaces()
+  const ips: string[] = []
+  for (const name of Object.keys(interfaces)) {
+    for (const net of interfaces[name] || []) {
+      if (net.family === 'IPv4' && !net.internal) {
+        ips.push(net.address)
+      }
+    }
+  }
+  return ips
+})
+
+ipcMain.handle('create_virtual_monitor', async () => {
+  try {
+    const { stdout: beforeOut } = await execAsync('hyprctl monitors -j')
+    const beforeMonitors = JSON.parse(beforeOut).map((m: any) => m.name)
+
+    await execAsync('hyprctl output create headless')
+
+    // Wait a brief moment for the compositor to register the new output
+    await new Promise((resolve) => setTimeout(resolve, 500))
+
+    const { stdout: afterOut } = await execAsync('hyprctl monitors -j')
+    const afterMonitors = JSON.parse(afterOut).map((m: any) => m.name)
+
+    const newMonitor = afterMonitors.find((m: any) => !beforeMonitors.includes(m))
+    return { success: true, name: newMonitor || 'HEADLESS-1' }
+  } catch (error: any) {
+    console.error('Failed to create virtual monitor:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('remove_virtual_monitor', async (_, name: string) => {
+  try {
+    const stream = activeWayVncProcesses.get(name)
+    if (stream) {
+      stream.process.kill()
+      activeWayVncProcesses.delete(name)
+    }
+
+    await execAsync(`hyprctl output remove ${name}`)
+    return { success: true }
+  } catch (error: any) {
+    console.error('Failed to remove virtual monitor:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('start_vnc_stream', async (_, { monitorName, port }: { monitorName: string, port: number }) => {
+  try {
+    try {
+      await execAsync('which wayvnc')
+    } catch (e) {
+      return { success: false, error: 'wayvnc_missing' }
+    }
+
+    if (activeWayVncProcesses.has(monitorName)) {
+      const existing = activeWayVncProcesses.get(monitorName)
+      existing?.process.kill()
+      activeWayVncProcesses.delete(monitorName)
+    }
+
+    // Set unique control socket path to prevent conflicts
+    const socketPath = `/tmp/wayvncctl-${monitorName}`
+    if (fs.existsSync(socketPath)) {
+      try {
+        fs.unlinkSync(socketPath)
+      } catch (err) {
+        console.error('Failed to unlink stale wayvnc socket:', err)
+      }
+    }
+
+    console.log(`Starting wayvnc for ${monitorName} on port ${port}...`)
+    const wayvncProc = spawn('wayvnc', [
+      '-Ltrace',
+      '-S', socketPath,
+      '-o', monitorName,
+      '0.0.0.0',
+      port.toString()
+    ])
+
+    wayvncProc.stdout.on('data', (data) => console.log(`[wayvnc ${monitorName}]: ${data}`))
+    wayvncProc.stderr.on('data', (data) => console.error(`[wayvnc ${monitorName}]: ${data}`))
+
+    wayvncProc.on('error', (err) => {
+      console.error(`Failed to start wayvnc for ${monitorName}:`, err)
+    })
+
+    wayvncProc.on('close', (code) => {
+      console.log(`wayvnc for ${monitorName} exited with code ${code}`)
+      if (activeWayVncProcesses.get(monitorName)?.process === wayvncProc) {
+        activeWayVncProcesses.delete(monitorName)
+      }
+      mainWindow?.webContents.send('vnc_status_changed', { 
+        monitorName, 
+        active: false, 
+        code, 
+        error: code !== 0 ? 'capture_failed' : undefined 
+      })
+    });
+
+    activeWayVncProcesses.set(monitorName, { process: wayvncProc, port })
+    return { success: true, port }
+  } catch (error: any) {
+    console.error('Failed to start VNC stream:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('stop_vnc_stream', async (_, monitorName: string) => {
+  const stream = activeWayVncProcesses.get(monitorName)
+  if (stream) {
+    stream.process.kill()
+    activeWayVncProcesses.delete(monitorName)
+    return { success: true }
+  }
+  return { success: false, error: 'no_active_stream' }
+})
+
+ipcMain.handle('get_vnc_status', async () => {
+  let wayvncInstalled = false
+  try {
+    await execAsync('which wayvnc')
+    wayvncInstalled = true
+  } catch (e) {}
+
+  const activeStreams: { [key: string]: number } = {}
+  activeWayVncProcesses.forEach((val, key) => {
+    activeStreams[key] = val.port
+  })
+
+  return { wayvncInstalled, activeStreams }
+})
+
 export function registerDesktopEntry(): void {
   if (process.platform !== 'linux') return
 
@@ -692,7 +831,6 @@ if (!isSingleInstance) {
   setTimeout(() => {
     console.log('Performing startup monitor sync...')
     spawn('hyprctl', ['reload'])
-    identifyMonitors()
   }, 2000)
 
   app.on('activate', function () {
@@ -714,8 +852,15 @@ app.on('window-all-closed', () => {
   }
 })
 
-// Cleanup tray on quit
+// Cleanup tray and VNC streams on quit
 app.on('will-quit', () => {
+  activeWayVncProcesses.forEach((stream) => {
+    try {
+      stream.process.kill()
+    } catch (e) {}
+  })
+  activeWayVncProcesses.clear()
+
   if (tray) {
     tray.destroy()
     tray = null

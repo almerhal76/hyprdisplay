@@ -9,7 +9,7 @@ const getCurrentWindow = () => ({
 });
 import { motion, AnimatePresence } from "framer-motion";
 import { 
-  RefreshCcw, Save, Plus, Minus, ZoomIn, ZoomOut, Layers, X, Square, Check, Layout, ChevronDown, Monitor as ScreenIcon, Trash2, Settings, Power, Download, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Grid, Monitor, PanelLeft, PanelRight, PanelTop, PanelBottom
+  RefreshCcw, Save, Plus, Minus, ZoomIn, ZoomOut, Layers, X, Square, Check, Layout, ChevronDown, Monitor as ScreenIcon, Trash2, Settings, Power, Download, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Grid, Monitor, PanelLeft, PanelRight, PanelTop, PanelBottom, Tv, Smartphone
 } from "lucide-react";
 const getVersion = async () => invoke<string>('get_app_version');
 import "./App.css";
@@ -22,6 +22,15 @@ interface MonitorMode {
   height: number;
   refreshRate: number;
 }
+
+const headlessDefaultModes: MonitorMode[] = [
+  { width: 1920, height: 1080, refreshRate: 60 },
+  { width: 1600, height: 900, refreshRate: 60 },
+  { width: 1366, height: 768, refreshRate: 60 },
+  { width: 1280, height: 720, refreshRate: 60 },
+  { width: 1024, height: 768, refreshRate: 60 },
+  { width: 800, height: 600, refreshRate: 60 },
+];
 
 interface Monitor {
   id: string;
@@ -144,7 +153,7 @@ function CustomSelect({ options, value, onChange, icon: Icon, searchable = false
   );
 }
 
-function App() {
+function Dashboard() {
   const [monitors, setMonitors] = useState<Monitor[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -164,7 +173,6 @@ function App() {
   const [toast, setToast] = useState<{ title: string, message: string, type: ToastType } | null>(null);
   const [activeDraggingId, setActiveDraggingId] = useState<string | null>(null);
   const [isPanning, setIsPanning] = useState(false);
-  const [showSplash, setShowSplash] = useState(true);
 
   const showToast = (message: string, type: ToastType = 'info', title?: string) => {
     const defaultTitles = { success: 'Success', error: 'Error', info: 'Information' };
@@ -181,6 +189,19 @@ function App() {
 
   useEffect(() => {
     getVersion().then(v => setAppVersion(`v${v}`)).catch(() => {});
+  }, []);
+
+  const wasWideRef = useRef(window.innerWidth > 1100);
+  useEffect(() => {
+    const handleResize = () => {
+      const isWide = window.innerWidth > 1100;
+      if (wasWideRef.current && !isWide) {
+        setSelectedId(null);
+      }
+      wasWideRef.current = isWide;
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   useEffect(() => {
@@ -268,14 +289,15 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [runInBackground, setRunInBackground] = useState(true);
   const [launchOnStartup, setLaunchOnStartup] = useState(false);
+  
+  // Virtual monitor / Android monitor states
+  const [showVirtualModal, setShowVirtualModal] = useState(false);
+  const [localIps, setLocalIps] = useState<string[]>([]);
+  const [vncStatus, setVncStatus] = useState<{ wayvncInstalled: boolean, activeStreams: { [key: string]: number } }>({ wayvncInstalled: false, activeStreams: {} });
+  const [vncPort, setVncPort] = useState(5900);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    // Show splash for 2.5 seconds
-    const timer = setTimeout(() => {
-      setShowSplash(false);
-    }, 2500);
-
     checkForUpdates();
     
     // Check autostart status from system
@@ -287,18 +309,32 @@ function App() {
       setStartHidden(hidden);
     }).catch(() => {});
 
-    return () => clearTimeout(timer);
+    fetchVncStatus();
   }, []);
 
   useEffect(() => {
     fetchMonitors();
     fetchProfiles();
     fetchLastProfile();
-    // Identify monitors on startup after splash
-    if (!showSplash) {
-      identifyMonitors();
-    }
-  }, [showSplash]);
+    identifyMonitors();
+  }, []);
+
+  useEffect(() => {
+    const api = (window as any).api;
+    if (!api || !api.on) return;
+
+    const unsubVnc = api.on('vnc_status_changed', (data: { monitorName: string, active: boolean, error?: string }) => {
+      console.log('VNC Status Changed event:', data);
+      fetchVncStatus();
+      if (!data.active && data.error === 'capture_failed') {
+        showToast(`VNC Stream for ${data.monitorName} stopped due to a capturing error.`, 'info', 'VNC Stream');
+      }
+    });
+
+    return () => {
+      unsubVnc();
+    };
+  }, []);
 
   const fetchProfiles = async () => {
     try {
@@ -318,6 +354,86 @@ function App() {
     try {
       await invoke('identify_monitors');
     } catch (e) {}
+  };
+
+  const fetchVncStatus = async () => {
+    try {
+      const status = await invoke<{ wayvncInstalled: boolean, activeStreams: { [key: string]: number } }>('get_vnc_status');
+      setVncStatus(status);
+      const ips = await invoke<string[]>('get_local_ips');
+      setLocalIps(ips);
+    } catch (e) {
+      console.error("Failed to fetch VNC status:", e);
+    }
+  };
+
+  const createVirtualMonitor = async () => {
+    setLoading(true);
+    try {
+      const res = await invoke<{ success: boolean, name?: string, error?: string }>("create_virtual_monitor");
+      if (res.success && res.name) {
+        showToast(`Virtual display ${res.name} created successfully!`, "success");
+        await fetchMonitors();
+        await fetchVncStatus();
+      } else {
+        showToast(`Failed to create virtual display: ${res.error}`, "error");
+      }
+    } catch (e: any) {
+      showToast(`Error: ${e.message || e}`, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const removeVirtualMonitor = async (name: string) => {
+    setLoading(true);
+    try {
+      const res = await invoke<{ success: boolean, error?: string }>("remove_virtual_monitor", name);
+      if (res.success) {
+        showToast(`Virtual display ${name} removed!`, "success");
+        if (selectedId === name) setSelectedId(null);
+        await fetchMonitors();
+        await fetchVncStatus();
+      } else {
+        showToast(`Failed to remove: ${res.error}`, "error");
+      }
+    } catch (e: any) {
+      showToast(`Error: ${e.message || e}`, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startVncStream = async (monitorName: string, port: number) => {
+    try {
+      const res = await invoke<{ success: boolean, port?: number, error?: string }>("start_vnc_stream", { monitorName, port });
+      if (res.success) {
+        showToast(`VNC Stream started on port ${res.port}!`, "success");
+        await fetchVncStatus();
+      } else {
+        if (res.error === 'wayvnc_missing') {
+          showToast("Failed: 'wayvnc' is not installed! Please install wayvnc first.", "error");
+        } else {
+          showToast(`Failed to start stream: ${res.error}`, "error");
+        }
+      }
+    } catch (e: any) {
+      showToast(`Error: ${e.message || e}`, "error");
+    }
+  };
+
+  const stopVncStream = async (monitorName: string) => {
+    try {
+      const res = await invoke<{ success: boolean, error?: string }>("stop_vnc_stream", monitorName);
+      if (res.success) {
+        showToast("VNC Stream stopped successfully.", "success");
+        await fetchVncStatus();
+      } else {
+        showToast(`Failed to stop stream: ${res.error}`, "error");
+      }
+    } catch (e: any) {
+      showToast(`Error: ${e.message || e}`, "error");
+    }
   };
 
 
@@ -373,18 +489,20 @@ function App() {
         }
 
         return {
-          id: m.name, name: m.name, description: `${m.model} (${m.make})`,
+          id: m.name, name: m.name, description: m.name.toUpperCase().startsWith('HEADLESS') ? 'Virtual Headless Display' : `${m.model} (${m.make})`,
           width: m.width, height: m.height, refreshRate: m.refreshRate,
           x: x, y: y, scale: m.scale, transform: m.transform,
           focused: m.focused, isPrimary: isPrimary,
           active: true,
           assignedFrameId: assignedId,
           workspaces: existing?.workspaces || "",
-          modes: (m.availableModes || []).map((modeStr: string) => {
-            const [res, rate] = modeStr.split('@');
-            const [w, h] = res.split('x').map(Number);
-            return { width: w, height: h, refreshRate: parseFloat(rate.replace('Hz', '')) };
-          }),
+          modes: m.name.toUpperCase().startsWith('HEADLESS')
+            ? headlessDefaultModes
+            : (m.availableModes || []).map((modeStr: string) => {
+                const [res, rate] = modeStr.split('@');
+                const [w, h] = res.split('x').map(Number);
+                return { width: w, height: h, refreshRate: parseFloat(rate.replace('Hz', '')) };
+              }),
         };
       });
 
@@ -402,7 +520,11 @@ function App() {
       }
 
       setMonitors(formatted);
-      if (formatted.length > 0 && !selectedId) setSelectedId(formatted[0].id);
+      if (formatted.length > 0 && !selectedId) {
+        if (window.innerWidth > 1100) {
+          setSelectedId(formatted[0].id);
+        }
+      }
       
       try {
         const p = await invoke<string[]>("get_profiles");
@@ -460,7 +582,7 @@ function App() {
           }
 
           return {
-            id: m.name, name: m.name, description: `${m.model} (${m.make})`,
+            id: m.name, name: m.name, description: m.name.toUpperCase().startsWith('HEADLESS') ? 'Virtual Headless Display' : `${m.model} (${m.make})`,
             width: saved.width || m.width, 
             height: saved.height || m.height, 
             refreshRate: saved.refreshRate || m.refreshRate,
@@ -473,24 +595,28 @@ function App() {
             active: true,
             assignedFrameId: assignedId,
             workspaces: saved.workspaces || "",
-            modes: (m.availableModes || []).map((modeStr: string) => {
-              const [res, rate] = modeStr.split('@');
-              const [w, h] = res.split('x').map(Number);
-              return { width: w, height: h, refreshRate: parseFloat(rate.replace('Hz', '')) };
-            }),
+            modes: m.name.toUpperCase().startsWith('HEADLESS')
+              ? headlessDefaultModes
+              : (m.availableModes || []).map((modeStr: string) => {
+                  const [res, rate] = modeStr.split('@');
+                  const [w, h] = res.split('x').map(Number);
+                  return { width: w, height: h, refreshRate: parseFloat(rate.replace('Hz', '')) };
+                }),
           };
         }
         return { 
-          id: m.name, name: m.name, description: `${m.model} (${m.make})`,
+          id: m.name, name: m.name, description: m.name.toUpperCase().startsWith('HEADLESS') ? 'Virtual Headless Display' : `${m.model} (${m.make})`,
           width: m.width, height: m.height, refreshRate: m.refreshRate,
           x: 0, y: 0, scale: 1, transform: 0,
           focused: false, isPrimary: false, active: false,
           assignedFrameId: null,
-          modes: (m.availableModes || []).map((modeStr: string) => {
-            const [res, rate] = modeStr.split('@');
-            const [w, h] = res.split('x').map(Number);
-            return { width: w, height: h, refreshRate: parseFloat(rate.replace('Hz', '')) };
-          }),
+          modes: m.name.toUpperCase().startsWith('HEADLESS')
+            ? headlessDefaultModes
+            : (m.availableModes || []).map((modeStr: string) => {
+                const [res, rate] = modeStr.split('@');
+                const [w, h] = res.split('x').map(Number);
+                return { width: w, height: h, refreshRate: parseFloat(rate.replace('Hz', '')) };
+              }),
         };
       });
 
@@ -880,7 +1006,7 @@ function App() {
       )}
       {/* Floating Header Overlays */}
       <div className="custom-titlebar">
-        <div className="top-right-toolbar" style={{ pointerEvents: 'auto', width: 'auto' }}>
+        <div className="top-right-toolbar">
           <CustomSelect 
             icon={ScreenIcon}
             searchable={true}
@@ -928,6 +1054,9 @@ function App() {
           <button className="control-btn" onClick={() => invoke('identify_monitors')} title="Identify Monitors">
             <ScreenIcon size={18} />
           </button>
+          <button className="control-btn" onClick={() => { setShowVirtualModal(true); fetchVncStatus(); }} title="Manage Virtual / Android Monitors">
+            <Tv size={18} color={showVirtualModal ? 'var(--accent)' : 'currentColor'} />
+          </button>
           <button className="control-btn" onClick={() => setShowPresetMenu(!showPresetMenu)}>
             <Layout size={18} color={showPresetMenu ? 'var(--accent)' : 'currentColor'} />
           </button>
@@ -946,8 +1075,11 @@ function App() {
       {/* Preset Menu Overlay */}
       <AnimatePresence>
         {showPresetMenu && (
-          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
-            style={{ position: 'absolute', top: 70, left: 20, zIndex: 1100, background: 'var(--bg-card)', backdropFilter: 'blur(20px)', borderRadius: '24px', border: '1px solid var(--border)', padding: '12px', width: '220px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            exit={{ opacity: 0, y: -10 }}
+            className="preset-menu-overlay"
           >
             <h4 style={{ fontSize: '11px', color: 'var(--text-dim)', marginBottom: '8px', padding: '0 8px', letterSpacing: '1px' }}>TEMPLATE LAYOUTS</h4>
             <div style={{ maxHeight: '350px', overflowY: 'auto', paddingRight: '4px' }} className="custom-scrollbar">
@@ -1637,10 +1769,7 @@ function App() {
       </AnimatePresence>
 
       <div className="bottom-bar">
-        <motion.div 
-          layoutId="main-logo-header"
-          style={{ display: 'flex', alignItems: 'center', gap: '15px', pointerEvents: 'auto' }}
-        >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '15px', pointerEvents: 'auto' }}>
           <div className="app-logo-container" style={{ width: '42px', height: '42px', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border)', boxShadow: '0 0 20px rgba(99, 102, 241, 0.2)', background: 'rgba(255,255,255,0.05)' }}>
             <img src={logoSmall} style={{ width: '100%', height: '100%', objectFit: 'contain' }} alt="App Logo" />
           </div>
@@ -1648,7 +1777,7 @@ function App() {
             <h1 className="app-title" style={{ margin: 0, fontSize: '18px', textTransform: 'uppercase' }}>HyprDisplay Manager</h1>
             <span className="app-version" style={{ fontSize: '10px', color: 'var(--text-dim)', letterSpacing: '1px' }}>{appVersion}</span>
           </div>
-        </motion.div>
+        </div>
 
         <div className="zoom-controls" style={{ pointerEvents: 'auto', background: 'var(--bg-card)', padding: '6px', borderRadius: '16px', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button className="control-btn" style={{ width: '24px', height: '24px' }} onClick={() => setZoom(z => Math.max(0.02, z - 0.01))}><ZoomOut size={12} /></button>
@@ -1658,7 +1787,7 @@ function App() {
       </div>
       
       <AnimatePresence>{toast && (
-        <motion.div initial={{ x: 100, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 100, opacity: 0 }} style={{ position: 'absolute', top: 80, right: 20, background: 'var(--bg-card)', backdropFilter: 'blur(12px)', padding: '12px 20px', borderRadius: '24px', border: '1px solid var(--border)', zIndex: 2000, boxShadow: '0 10px 30px rgba(0,0,0,0.5)', minWidth: '200px' }}>
+        <motion.div initial={{ x: 100, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 100, opacity: 0 }} style={{ position: 'absolute', top: 80, right: 20, background: 'var(--bg-card)', backdropFilter: 'blur(12px)', padding: '12px 20px', borderRadius: '24px', border: '1px solid var(--border)', zIndex: 16000, boxShadow: '0 10px 30px rgba(0,0,0,0.5)', minWidth: '200px' }}>
           <div style={{ fontWeight: 'bold', color: toast.type === 'error' ? 'var(--danger)' : 'var(--accent)', fontSize: '14px' }}>{toast.title}</div>
           <div style={{ fontSize: '12px', color: 'var(--text-dim)' }}>{toast.message}</div>
         </motion.div>
@@ -1878,157 +2007,303 @@ function App() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Virtual / Android Monitor Manager Modal */}
       <AnimatePresence>
-        {showSplash && (
-          <motion.div
-            initial={{ opacity: 1 }}
-            exit={{ opacity: 0, scale: 1.05, filter: "blur(20px)" }}
-            transition={{ duration: 0.8, ease: "easeInOut" }}
-            style={{
-              position: 'fixed',
-              inset: 0,
-              zIndex: 9999,
-              background: '#0a0a0f',
-              display: 'flex',
-              flexDirection: 'column',
-              padding: '40px'
-            }}
-          >
-            {/* Header Style Logo & Title (Top Left) */}
-            <motion.div 
-              layoutId="main-logo-header"
-              initial={{ x: -20, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              transition={{ duration: 0.6, ease: "easeOut" }}
-              style={{ display: 'flex', alignItems: 'center', gap: '16px' }}
+        {showVirtualModal && (
+          <div className="modal-overlay" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 11000 }}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              style={{ background: 'var(--bg-card)', padding: '30px', borderRadius: '24px', border: '1px solid var(--border)', width: '420px', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 20px 50px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column' }}
+              className="custom-scrollbar"
             >
-              <div style={{
-                width: '64px',
-                height: '64px',
-                background: 'rgba(255,255,255,0.03)',
-                borderRadius: '16px',
-                border: '1px solid rgba(255,255,255,0.05)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '8px'
-              }}>
-                <img src={logoSmall} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <Tv size={20} color="var(--accent)" />
+                  <h3 style={{ fontSize: '18px', margin: 0 }}>Android & Virtual Monitors</h3>
+                </div>
+                <button onClick={() => setShowVirtualModal(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-dim)', cursor: 'pointer' }}><X size={20} /></button>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <h1 style={{ 
-                  fontSize: '20px', 
-                  fontWeight: '700', 
-                  letterSpacing: '1px', 
-                  color: 'white',
-                  margin: 0
-                }}>
-                  HYPRDISPLAY MANAGER
-                </h1>
-                <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.3)', fontWeight: '500' }}>v0.1.0</span>
+
+              <p style={{ fontSize: '12px', color: 'var(--text-dim)', marginBottom: '20px', lineHeight: '1.5', textAlign: 'left' }}>
+                Turn your Android tablet or smartphone into an external monitor by creating a virtual headless display and streaming it via VNC.
+              </p>
+
+              {/* Active Headless Displays List */}
+              <div style={{ marginBottom: '24px', flex: 1, overflowY: 'auto' }} className="custom-scrollbar">
+                <h4 style={{ fontSize: '11px', color: 'var(--text-dim)', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '12px', textAlign: 'left' }}>Active Virtual Displays</h4>
+                {(() => {
+                  const headlessMonitors = monitors.filter(m => m.name.toUpperCase().startsWith('HEADLESS'));
+                  if (headlessMonitors.length === 0) {
+                    return (
+                      <div style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', border: '1px dashed var(--border)', borderRadius: '16px', textAlign: 'center' }}>
+                        <Smartphone size={32} style={{ color: 'var(--text-dim)', opacity: 0.5, marginBottom: '8px', marginLeft: 'auto', marginRight: 'auto' }} />
+                        <div style={{ fontSize: '12px', color: 'var(--text-dim)' }}>No active virtual monitors.</div>
+                      </div>
+                    );
+                  }
+
+                  return headlessMonitors.map(mon => {
+                    const isStreaming = vncStatus.activeStreams[mon.name] !== undefined;
+                    const activePort = vncStatus.activeStreams[mon.name];
+                    return (
+                      <div key={mon.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '16px', padding: '16px', marginBottom: '12px', textAlign: 'left' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                          <div>
+                            <div style={{ fontWeight: 'bold', fontSize: '14px', color: 'white' }}>{mon.name}</div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-dim)' }}>{mon.width}x{mon.height} @ {mon.refreshRate.toFixed(0)}Hz</div>
+                          </div>
+                          <button className="btn-secondary" style={{ color: 'var(--danger)', borderColor: 'rgba(239,68,68,0.2)', padding: '6px 10px', borderRadius: '8px', fontSize: '11px', height: 'auto', width: 'auto' }}
+                            onClick={() => removeVirtualMonitor(mon.name)}
+                          >
+                            Remove
+                          </button>
+                        </div>
+
+                        {/* VNC Stream Controls */}
+                        {!vncStatus.wayvncInstalled ? (
+                          <div style={{ fontSize: '11px', color: 'var(--danger)', background: 'rgba(239,68,68,0.05)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.1)' }}>
+                            <strong>wayvnc is not installed!</strong> Please install wayvnc using your package manager (e.g. `sudo pacman -S wayvnc` or `sudo apt install wayvnc`) to enable streaming.
+                          </div>
+                        ) : (
+                          <div style={{ background: 'rgba(0,0,0,0.15)', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                              <span style={{ fontSize: '12px', fontWeight: '500' }}>VNC Stream Status</span>
+                              <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '12px', background: isStreaming ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.05)', color: isStreaming ? '#22c55e' : 'var(--text-dim)', fontWeight: 'bold' }}>
+                                {isStreaming ? 'STREAMING' : 'OFFLINE'}
+                              </span>
+                            </div>
+
+                            {isStreaming ? (
+                              <div>
+                                <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginBottom: '6px' }}>Connect VNC Viewer to:</div>
+                                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '8px', borderRadius: '8px', fontFamily: 'monospace', fontSize: '12px', color: 'var(--accent)', overflowX: 'auto', marginBottom: '12px', whiteSpace: 'pre' }} className="custom-scrollbar">
+                                  {localIps.length > 0 ? (
+                                    localIps.map(ip => `${ip}:${activePort}`).join('\n')
+                                  ) : (
+                                    `localhost:${activePort}`
+                                  )}
+                                </div>
+
+                                <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '10px', marginBottom: '12px' }}>
+                                  <div style={{ fontSize: '11px', fontWeight: '600', color: 'white', marginBottom: '4px' }}>⚡ USB Low Latency Method (Recommended):</div>
+                                  <p style={{ fontSize: '10px', color: 'var(--text-dim)', margin: '0 0 6px 0', lineHeight: '1.4' }}>
+                                    Connect Android via USB, enable USB Debugging, then run in PC terminal:
+                                  </p>
+                                  <div style={{ background: 'rgba(0,0,0,0.3)', padding: '6px 8px', borderRadius: '6px', fontFamily: 'monospace', fontSize: '11px', color: '#f59e0b', overflowX: 'auto' }}>
+                                    adb reverse tcp:{activePort} tcp:{activePort}
+                                  </div>
+                                  <p style={{ fontSize: '10px', color: 'var(--text-dim)', margin: '6px 0 0 0', lineHeight: '1.4' }}>
+                                    Then open VNC app on Android and connect to <strong>localhost:{activePort}</strong>.
+                                  </p>
+                                </div>
+
+                                <button className="btn-secondary" style={{ width: '100%', padding: '8px', fontSize: '11px', color: 'var(--danger)', borderColor: 'rgba(239,68,68,0.2)', height: 'auto' }}
+                                  onClick={() => stopVncStream(mon.name)}
+                                >
+                                  Stop VNC Stream
+                                </button>
+                              </div>
+                            ) : (
+                              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                <div style={{ flex: 1 }}>
+                                  <span style={{ fontSize: '9px', color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: '4px', display: 'block' }}>Port</span>
+                                  <input type="number" className="custom-select" style={{ padding: '6px 10px', fontSize: '12px' }} value={vncPort} onChange={(e) => setVncPort(parseInt(e.target.value) || 5900)} />
+                                </div>
+                                <button className="btn-primary" style={{ flex: 2, height: '34px', fontSize: '12px', alignSelf: 'flex-end', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                  onClick={() => startVncStream(mon.name, vncPort)}
+                                >
+                                  Start Stream
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: '20px', display: 'flex', gap: '10px' }}>
+                <button className="btn-secondary" style={{ flex: 1 }} onClick={() => setShowVirtualModal(false)}>Close</button>
+                <button className="btn-primary" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }} onClick={createVirtualMonitor}>
+                  <Plus size={16} /> Create Display
+                </button>
               </div>
             </motion.div>
-
-            {/* Center Animation (Rotating Gear) */}
-            <div style={{ 
-              flex: 1, 
-              display: 'flex', 
-              flexDirection: 'column', 
-              alignItems: 'center', 
-              justifyContent: 'center',
-              gap: '32px'
-            }}>
-              <motion.div
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ duration: 0.8, ease: "backOut" }}
-                style={{ position: 'relative' }}
-              >
-                {/* Background Glow */}
-                <motion.div
-                  animate={{
-                    opacity: [0.1, 0.3, 0.1],
-                    scale: [1, 1.2, 1]
-                  }}
-                  transition={{ duration: 3, repeat: Infinity }}
-                  style={{
-                    position: 'absolute',
-                    inset: '-40px',
-                    background: 'var(--accent)',
-                    filter: 'blur(60px)',
-                    borderRadius: '50%',
-                    zIndex: 0
-                  }}
-                />
-                
-                {/* Rotating Gear */}
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
-                  style={{ position: 'relative', zIndex: 1 }}
-                >
-                  <Settings size={120} strokeWidth={1} color="var(--accent)" style={{ opacity: 0.8 }} />
-                </motion.div>
-                
-                {/* Inner Small Gear (Counter-Rotating) */}
-                <motion.div
-                  animate={{ rotate: -360 }}
-                  transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
-                  style={{ 
-                    position: 'absolute', 
-                    top: '50%', 
-                    left: '50%', 
-                    transform: 'translate(-50%, -50%)',
-                    zIndex: 2 
-                  }}
-                >
-                  <Settings size={40} strokeWidth={1.5} color="white" style={{ opacity: 0.4 }} />
-                </motion.div>
-              </motion.div>
-
-              <div style={{ textAlign: 'center' }}>
-                <motion.p
-                  animate={{ opacity: [0.3, 0.6, 0.3] }}
-                  transition={{ duration: 1.5, repeat: Infinity }}
-                  style={{ 
-                    fontSize: '10px', 
-                    letterSpacing: '3px', 
-                    color: 'white', 
-                    fontWeight: '600',
-                    textTransform: 'uppercase'
-                  }}
-                >
-                  Synchronizing Display Engine
-                </motion.p>
-                
-                <motion.div 
-                  style={{ 
-                    width: '180px', 
-                    height: '2px', 
-                    background: 'rgba(255,255,255,0.05)', 
-                    borderRadius: '1px',
-                    overflow: 'hidden',
-                    marginTop: '12px',
-                    marginInline: 'auto'
-                  }}
-                >
-                  <motion.div
-                    initial={{ x: '-100%' }}
-                    animate={{ x: '100%' }}
-                    transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                    style={{
-                      width: '40%',
-                      height: '100%',
-                      background: 'linear-gradient(to right, transparent, var(--accent), transparent)'
-                    }}
-                  />
-                </motion.div>
-              </div>
-            </div>
-          </motion.div>
+          </div>
         )}
       </AnimatePresence>
+
     </div>
+  );
+}
+
+function App() {
+  const [showSplash, setShowSplash] = useState(true);
+  const [appVersion, setAppVersion] = useState("v0.0.0");
+
+  useEffect(() => {
+    getVersion().then(v => setAppVersion(`v${v}`)).catch(() => {});
+    const timer = setTimeout(() => {
+      setShowSplash(false);
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  return (
+    <AnimatePresence mode="wait">
+      {showSplash ? (
+        <motion.div
+          key="splash"
+          initial={{ opacity: 1 }}
+          exit={{ opacity: 0, scale: 1.05, filter: "blur(20px)" }}
+          transition={{ duration: 0.8, ease: "easeInOut" }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 99999,
+            background: '#0a0a0f',
+            display: 'flex',
+            flexDirection: 'column',
+            padding: '40px'
+          }}
+        >
+          {/* Header Style Logo & Title (Top Left) */}
+          <motion.div 
+            initial={{ x: -20, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            transition={{ duration: 0.6, ease: "easeOut" }}
+            style={{ display: 'flex', alignItems: 'center', gap: '16px' }}
+          >
+            <div style={{
+              width: '64px',
+              height: '64px',
+              background: 'rgba(255,255,255,0.03)',
+              borderRadius: '16px',
+              border: '1px solid rgba(255,255,255,0.05)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '8px'
+            }}>
+              <img src={logoSmall} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <h1 style={{ 
+                fontSize: '20px', 
+                fontWeight: '700', 
+                letterSpacing: '1px', 
+                color: 'white',
+                margin: 0
+              }}>
+                HYPRDISPLAY MANAGER
+              </h1>
+              <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.3)', fontWeight: '500' }}>{appVersion}</span>
+            </div>
+          </motion.div>
+
+          {/* Center Animation (Rotating Gear) */}
+          <div style={{ 
+            flex: 1, 
+            display: 'flex', 
+            flexDirection: 'column', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            gap: '32px'
+          }}>
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.8, ease: "backOut" }}
+              style={{ position: 'relative' }}
+            >
+              {/* Background Glow */}
+              <motion.div
+                animate={{
+                  opacity: [0.1, 0.3, 0.1],
+                  scale: [1, 1.2, 1]
+                }}
+                transition={{ duration: 3, repeat: Infinity }}
+                style={{
+                  position: 'absolute',
+                  inset: '-40px',
+                  background: 'var(--accent)',
+                  filter: 'blur(60px)',
+                  borderRadius: '50%',
+                  zIndex: 0
+                }}
+              />
+              
+              {/* Rotating Gear */}
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+                style={{ position: 'relative', zIndex: 1 }}
+              >
+                <Settings size={120} strokeWidth={1} color="var(--accent)" style={{ opacity: 0.8 }} />
+              </motion.div>
+              
+              {/* Inner Small Gear (Counter-Rotating) */}
+              <motion.div
+                animate={{ rotate: -360 }}
+                transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+                style={{ 
+                  position: 'absolute', 
+                  top: '50%', 
+                  left: '50%', 
+                  transform: 'translate(-50%, -50%)',
+                  zIndex: 2 
+                }}
+              >
+                <Settings size={40} strokeWidth={1.5} color="white" style={{ opacity: 0.4 }} />
+              </motion.div>
+            </motion.div>
+
+            <div style={{ textAlign: 'center' }}>
+              <motion.p
+                animate={{ opacity: [0.3, 0.6, 0.3] }}
+                transition={{ duration: 1.5, repeat: Infinity }}
+                style={{ 
+                  fontSize: '10px', 
+                  letterSpacing: '3px', 
+                  color: 'white', 
+                  fontWeight: '600',
+                  textTransform: 'uppercase'
+                }}
+              >
+                Synchronizing Display Engine
+              </motion.p>
+              
+              <motion.div 
+                style={{ 
+                  width: '180px', 
+                  height: '2px', 
+                  background: 'rgba(255,255,255,0.05)', 
+                  borderRadius: '1px',
+                  overflow: 'hidden',
+                  marginTop: '12px',
+                  marginInline: 'auto'
+                }}
+              >
+                <motion.div
+                  initial={{ x: '-100%' }}
+                  animate={{ x: '100%' }}
+                  transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                  style={{
+                    width: '40%',
+                    height: '100%',
+                    background: 'linear-gradient(to right, transparent, var(--accent), transparent)'
+                  }}
+                />
+              </motion.div>
+            </div>
+          </div>
+        </motion.div>
+      ) : (
+        <Dashboard key="dashboard" />
+      )}
+    </AnimatePresence>
   );
 }
 
