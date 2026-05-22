@@ -295,6 +295,7 @@ function Dashboard() {
   const [localIps, setLocalIps] = useState<string[]>([]);
   const [vncStatus, setVncStatus] = useState<{ wayvncInstalled: boolean, activeStreams: { [key: string]: number } }>({ wayvncInstalled: false, activeStreams: {} });
   const [vncPort, setVncPort] = useState(5900);
+  const [vncPassword, setVncPassword] = useState("");
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -404,9 +405,9 @@ function Dashboard() {
     }
   };
 
-  const startVncStream = async (monitorName: string, port: number) => {
+  const startVncStream = async (monitorName: string, port: number, password?: string) => {
     try {
-      const res = await invoke<{ success: boolean, port?: number, error?: string }>("start_vnc_stream", { monitorName, port });
+      const res = await invoke<{ success: boolean, port?: number, error?: string }>("start_vnc_stream", { monitorName, port, password });
       if (res.success) {
         showToast(`VNC Stream started on port ${res.port}!`, "success");
         await fetchVncStatus();
@@ -2104,13 +2105,19 @@ function Dashboard() {
                                 </button>
                               </div>
                             ) : (
-                              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                <div style={{ flex: 1 }}>
-                                  <span style={{ fontSize: '9px', color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: '4px', display: 'block' }}>Port</span>
-                                  <input type="number" className="custom-select" style={{ padding: '6px 10px', fontSize: '12px' }} value={vncPort} onChange={(e) => setVncPort(parseInt(e.target.value) || 5900)} />
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                  <div style={{ flex: 1 }}>
+                                    <span style={{ fontSize: '9px', color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: '4px', display: 'block' }}>Port</span>
+                                    <input type="number" className="custom-select" style={{ padding: '6px 10px', fontSize: '12px' }} value={vncPort} onChange={(e) => setVncPort(parseInt(e.target.value) || 5900)} />
+                                  </div>
+                                  <div style={{ flex: 2 }}>
+                                    <span style={{ fontSize: '9px', color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: '4px', display: 'block' }}>Password (Optional)</span>
+                                    <input type="text" placeholder="No password" className="custom-select" style={{ padding: '6px 10px', fontSize: '12px' }} value={vncPassword} onChange={(e) => setVncPassword(e.target.value)} />
+                                  </div>
                                 </div>
-                                <button className="btn-primary" style={{ flex: 2, height: '34px', fontSize: '12px', alignSelf: 'flex-end', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                  onClick={() => startVncStream(mon.name, vncPort)}
+                                <button className="btn-primary" style={{ width: '100%', height: '34px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                  onClick={() => startVncStream(mon.name, vncPort, vncPassword)}
                                 >
                                   Start Stream
                                 </button>

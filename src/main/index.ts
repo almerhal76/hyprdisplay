@@ -148,12 +148,45 @@ ipcMain.handle('get_hyprland_monitors', async () => {
   }
 })
 
+async function syncAndApplyHyprlandConfig() {
+  const monitorsConfPath = path.join(os.homedir(), '.config/hypr/monitors.conf')
+  let neededHeadlessCount = 0
+  if (fs.existsSync(monitorsConfPath)) {
+    const content = fs.readFileSync(monitorsConfPath, 'utf-8')
+    const matches = content.match(/monitor=HEADLESS-[0-9]+/g)
+    if (matches) {
+      neededHeadlessCount = matches.length
+    }
+  }
+
+  if (neededHeadlessCount > 0) {
+    try {
+      const { stdout } = await execAsync('hyprctl monitors -j')
+      const monitors = JSON.parse(stdout)
+      const currentHeadlessCount = monitors.filter((m: any) => m.name.startsWith('HEADLESS-')).length
+
+      const missing = neededHeadlessCount - currentHeadlessCount
+      if (missing > 0) {
+        console.log(`Creating ${missing} missing headless monitor(s)...`)
+        for (let i = 0; i < missing; i++) {
+          await execAsync('hyprctl output create headless')
+          await new Promise((resolve) => setTimeout(resolve, 500))
+        }
+      }
+    } catch (e) {
+      console.error('Failed to sync headless monitors:', e)
+    }
+  }
+
+  spawn('hyprctl', ['reload'])
+}
+
 ipcMain.handle('apply_hyprland_config', async (_, args: { config: string }) => {
   const filePath = path.join(os.homedir(), '.config/hypr/monitors.conf')
   const dir = path.dirname(filePath)
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
   fs.writeFileSync(filePath, args.config)
-  spawn('hyprctl', ['reload'])
+  await syncAndApplyHyprlandConfig()
   return
 })
 
@@ -566,7 +599,7 @@ ipcMain.handle('remove_virtual_monitor', async (_, name: string) => {
   }
 })
 
-ipcMain.handle('start_vnc_stream', async (_, { monitorName, port }: { monitorName: string, port: number }) => {
+ipcMain.handle('start_vnc_stream', async (_, { monitorName, port, password }: { monitorName: string, port: number, password?: string }) => {
   try {
     try {
       await execAsync('which wayvnc')
@@ -590,14 +623,46 @@ ipcMain.handle('start_vnc_stream', async (_, { monitorName, port }: { monitorNam
       }
     }
 
-    console.log(`Starting wayvnc for ${monitorName} on port ${port}...`)
-    const wayvncProc = spawn('wayvnc', [
+    const args = [
       '-Ltrace',
+      '-r',
       '-S', socketPath,
-      '-o', monitorName,
-      '0.0.0.0',
-      port.toString()
-    ])
+      '-o', monitorName
+    ];
+
+    if (password && password.trim() !== "") {
+      const certsDir = path.join(os.homedir(), '.config/hyprdisplay/wayvnc_certs');
+      if (!fs.existsSync(certsDir)) fs.mkdirSync(certsDir, { recursive: true });
+
+      const tlsCert = path.join(certsDir, 'tls_cert.pem');
+      const tlsKey = path.join(certsDir, 'tls_key.pem');
+      const rsaKey = path.join(certsDir, 'rsa_key.pem');
+      
+      if (!fs.existsSync(tlsCert) || !fs.existsSync(tlsKey)) {
+        await execAsync(`openssl req -new -x509 -days 3650 -nodes -out "${tlsCert}" -keyout "${tlsKey}" -subj "/CN=hyprdisplay"`);
+      }
+      if (!fs.existsSync(rsaKey)) {
+        await execAsync(`openssl genrsa -traditional -out "${rsaKey}" 2048`);
+      }
+
+      const configPath = `/tmp/wayvnc_config_${monitorName}`;
+      const configContent = `address=0.0.0.0\nport=${port}\nenable_auth=true\nusername=user\npassword=${password.trim()}\nrsa_private_key_file=${rsaKey}\nprivate_key_file=${tlsKey}\ncertificate_file=${tlsCert}\nrelax_encryption=true\n`;
+      fs.writeFileSync(configPath, configContent);
+      args.push('-C', configPath);
+      console.log(`Starting wayvnc for ${monitorName} on port ${port} with password auth...`);
+    } else {
+      args.push('0.0.0.0', port.toString());
+      console.log(`Starting wayvnc for ${monitorName} on port ${port}...`);
+    }
+
+    const wayvncProc = spawn('wayvnc', args)
+
+    // Automatically attempt to run adb reverse for seamless Android USB connection
+    try {
+      execAsync(`adb reverse tcp:${port} tcp:${port}`)
+        .then(() => console.log(`[ADB] Successfully ran adb reverse tcp:${port} tcp:${port}`))
+        .catch((err) => console.log(`[ADB Hint] adb reverse failed or no device connected (this is normal if not using USB):`, err.message));
+    } catch (e) {}
 
     wayvncProc.stdout.on('data', (data) => console.log(`[wayvnc ${monitorName}]: ${data}`))
     wayvncProc.stderr.on('data', (data) => console.error(`[wayvnc ${monitorName}]: ${data}`))
@@ -779,7 +844,7 @@ if (!isSingleInstance) {
   app.on('second-instance', (_, commandLine) => {
     if (commandLine.includes('--apply')) {
       console.log('Second instance was an --apply command. Ignoring UI popup and applying config.')
-      spawn('hyprctl', ['reload'])
+      syncAndApplyHyprlandConfig()
       return
     }
 
@@ -799,8 +864,9 @@ if (!isSingleInstance) {
     // Cek apakah aplikasi dipanggil dengan argumen --apply (Headless CLI mode)
     if (process.argv.includes('--apply')) {
       console.log('Running in CLI mode: Applying configs...')
-      spawn('hyprctl', ['reload'])
-      app.quit()
+      syncAndApplyHyprlandConfig().then(() => {
+        app.quit()
+      })
       return // Hentikan eksekusi agar GUI tidak terbuka
     }
 
@@ -830,7 +896,7 @@ if (!isSingleInstance) {
   // Auto-trigger identifier and reload configs after startup (delay for better reliability)
   setTimeout(() => {
     console.log('Performing startup monitor sync...')
-    spawn('hyprctl', ['reload'])
+    syncAndApplyHyprlandConfig()
   }, 2000)
 
   app.on('activate', function () {
