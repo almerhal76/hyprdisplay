@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import QRCode from "qrcode";
 const invoke = <T,>(channel: string, args?: any): Promise<T> => (window as any).api.invoke(channel, args);
 const getCurrentWindow = () => ({
   minimize: () => invoke('window_minimize'),
@@ -9,7 +10,7 @@ const getCurrentWindow = () => ({
 });
 import { motion, AnimatePresence } from "framer-motion";
 import { 
-  RefreshCcw, Save, Plus, Minus, ZoomIn, ZoomOut, Layers, X, Square, Check, Layout, ChevronDown, Monitor as ScreenIcon, Trash2, Settings, Power, Download, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Grid, Monitor, PanelLeft, PanelRight, PanelTop, PanelBottom, Tv, Smartphone
+  RefreshCcw, Save, Plus, Minus, ZoomIn, ZoomOut, Layers, X, Square, Check, Layout, ChevronDown, Monitor as ScreenIcon, Trash2, Settings, Power, Download, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Grid, Monitor, PanelLeft, PanelRight, PanelTop, PanelBottom, Tv, Smartphone, Eye, EyeOff, Copy
 } from "lucide-react";
 const getVersion = async () => invoke<string>('get_app_version');
 import "./App.css";
@@ -152,6 +153,109 @@ function CustomSelect({ options, value, onChange, icon: Icon, searchable = false
     </div>
   );
 }
+
+interface VncQrCodeProps {
+  ips: string[];
+  port: number;
+  password?: string;
+}
+
+const VncQrCode: React.FC<VncQrCodeProps> = ({ ips, port, password }) => {
+  const allIps = [...ips, 'localhost'];
+  const [selectedIp, setSelectedIp] = useState<string>(ips[0] || 'localhost');
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (ips.length > 0 && !allIps.includes(selectedIp)) {
+      setSelectedIp(ips[0]);
+    }
+  }, [ips]);
+
+  const scheme = password && password.trim() !== "" 
+    ? `vnc://${selectedIp}:${port}?VncUsername=user&VncPassword=${encodeURIComponent(password.trim())}` 
+    : `vnc://${selectedIp}:${port}`;
+
+  const displayedScheme = password && password.trim() !== "" && !showPassword
+    ? `vnc://${selectedIp}:${port}?VncUsername=user&VncPassword=••••••••` 
+    : scheme;
+
+  useEffect(() => {
+    if (canvasRef.current) {
+      QRCode.toCanvas(
+        canvasRef.current,
+        scheme,
+        {
+          width: 150,
+          margin: 3,
+          color: {
+            dark: '#0d0d14', // Dark color matching theme background
+            light: '#ffffff' // White background for optimal scan contrast
+          }
+        },
+        (error) => {
+          if (error) console.error('QR Gen error:', error);
+        }
+      );
+    }
+  }, [scheme]);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(scheme);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '12px', marginBottom: '12px', padding: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '12px' }}>
+      <div style={{ fontSize: '11px', fontWeight: '600', color: 'white', marginBottom: '8px' }}>📱 Scan QR Code to Connect</div>
+      
+      {allIps.length > 1 && (
+        <div style={{ width: '100%', marginBottom: '8px' }}>
+          <select 
+            value={selectedIp} 
+            onChange={(e) => setSelectedIp(e.target.value)} 
+            className="custom-select" 
+            style={{ padding: '4px 8px', fontSize: '11px', width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', color: 'white', borderRadius: '6px' }}
+          >
+            {allIps.map(ip => (
+              <option key={ip} value={ip} style={{ background: 'var(--bg-card)', color: 'white' }}>
+                {ip === 'localhost' ? 'USB Connection (localhost)' : ip}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      <div style={{ padding: '6px', background: '#1e1e2f', borderRadius: '8px', border: '1px solid var(--border)', display: 'inline-block' }}>
+        <canvas ref={canvasRef} style={{ display: 'block', borderRadius: '4px' }} />
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(0,0,0,0.3)', padding: '6px 10px', borderRadius: '8px', width: '100%', marginTop: '8px' }}>
+        <code style={{ fontSize: '10px', color: 'var(--text-dim)', wordBreak: 'break-all', flex: 1, fontFamily: 'monospace', textAlign: 'left', lineHeight: '1.4' }}>
+          {displayedScheme}
+        </code>
+        {password && password.trim() !== "" && (
+          <button 
+            onClick={() => setShowPassword(!showPassword)} 
+            style={{ background: 'transparent', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+            title={showPassword ? "Hide password" : "Show password"}
+          >
+            {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+          </button>
+        )}
+        <button 
+          onClick={handleCopy} 
+          style={{ background: 'transparent', border: 'none', color: copied ? '#22c55e' : 'var(--text-dim)', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+          title="Copy link to clipboard"
+        >
+          {copied ? <Check size={14} /> : <Copy size={14} />}
+        </button>
+      </div>
+    </div>
+  );
+};
 
 function Dashboard() {
   const [monitors, setMonitors] = useState<Monitor[]>([]);
@@ -688,6 +792,24 @@ function Dashboard() {
       ]);
       fetchMonitors();
     }
+  }, [currentProfile]);
+
+  useEffect(() => {
+    const api = (window as any).api;
+    if (!api || !api.on) return;
+
+    const unsubSync = api.on('startup_monitor_sync_completed', () => {
+      console.log('Received startup_monitor_sync_completed event, reloading profile/monitors...');
+      if (currentProfile && currentProfile !== 'Default') {
+        loadProfileData(currentProfile);
+      } else {
+        fetchMonitors();
+      }
+    });
+
+    return () => {
+      unsubSync();
+    };
   }, [currentProfile]);
 
   const updateMonitor = (id: string, updates: Partial<Monitor>) => {
@@ -1746,7 +1868,7 @@ function Dashboard() {
       {/* Save Profile Modal */}
       <AnimatePresence>
         {showSaveModal && (
-          <div className="modal-overlay" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000 }}>
+          <div className="modal-overlay" style={{ zIndex: 3000 }}>
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
               style={{ background: 'var(--bg-card)', padding: '30px', borderRadius: '24px', border: '1px solid var(--border)', width: '350px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}
             >
@@ -1797,7 +1919,7 @@ function Dashboard() {
       {/* Confirmation Modal */}
       <AnimatePresence>
         {confirmModal.active && (
-          <div className="modal-overlay" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+          <div className="modal-overlay" style={{ zIndex: 9999 }}>
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} style={{ background: 'var(--bg-card)', borderRadius: '24px', border: '1px solid var(--border)', boxShadow: '0 20px 50px rgba(0,0,0,0.5)', width: '400px', textAlign: 'center', padding: '30px' }}>
               <h3 style={{ fontSize: '18px', marginBottom: '10px' }}>Keep these display settings?</h3>
               <p style={{ fontSize: '13px', color: 'var(--text-dim)', marginBottom: '24px' }}>
@@ -1815,7 +1937,7 @@ function Dashboard() {
       {/* Delete Confirmation Modal */}
       <AnimatePresence>
         {deleteConfirm.active && (
-          <div className="modal-overlay" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
+          <div className="modal-overlay" style={{ zIndex: 10000 }}>
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} style={{ background: 'var(--bg-card)', borderRadius: '24px', border: '1px solid var(--border)', boxShadow: '0 20px 50px rgba(0,0,0,0.5)', width: '380px', textAlign: 'center', padding: '30px' }}>
               <div style={{ color: 'var(--danger)', marginBottom: '15px' }}><Trash2 size={40} style={{ margin: '0 auto' }} /></div>
               <h3 style={{ fontSize: '18px', marginBottom: '10px' }}>{deleteConfirm.title}</h3>
@@ -1834,7 +1956,7 @@ function Dashboard() {
       {/* Settings Modal */}
       <AnimatePresence>
         {showSettings && (
-          <div className="modal-overlay" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 11000 }}>
+          <div className="modal-overlay" style={{ zIndex: 11000 }}>
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
               style={{ background: 'var(--bg-card)', padding: '30px', borderRadius: '24px', border: '1px solid var(--border)', width: '380px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}
             >
@@ -2012,7 +2134,7 @@ function Dashboard() {
       {/* Virtual / Android Monitor Manager Modal */}
       <AnimatePresence>
         {showVirtualModal && (
-          <div className="modal-overlay" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 11000 }}>
+          <div className="modal-overlay" style={{ zIndex: 11000 }}>
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
               style={{ background: 'var(--bg-card)', padding: '30px', borderRadius: '24px', border: '1px solid var(--border)', width: '420px', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 20px 50px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column' }}
               className="custom-scrollbar"
@@ -2084,6 +2206,8 @@ function Dashboard() {
                                     `localhost:${activePort}`
                                   )}
                                 </div>
+
+                                <VncQrCode ips={localIps} port={activePort} password={vncPassword} />
 
                                 <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '10px', marginBottom: '12px' }}>
                                   <div style={{ fontSize: '11px', fontWeight: '600', color: 'white', marginBottom: '4px' }}>⚡ USB Low Latency Method (Recommended):</div>

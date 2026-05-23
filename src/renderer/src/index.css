@@ -394,3 +394,32 @@ body {
     display: none;
   }
 }
+
+/* Modal Overlay layout */
+.modal-overlay {
+  position: absolute;
+  top: 75px; /* Position below titlebar so window controls and profile dropdown are always clickable */
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (min-width: 1100px) {
+  .modal-overlay {
+    justify-content: flex-end;
+    padding-right: 40px; /* Spacing from the right edge */
+  }
+}
+
+@media (max-width: 1100px) {
+  .modal-overlay {
+    top: 130px; /* Position below titlebar when it wraps on smaller screens */
+  }
+}
+

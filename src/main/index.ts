@@ -148,7 +148,7 @@ ipcMain.handle('get_hyprland_monitors', async () => {
   }
 })
 
-async function syncAndApplyHyprlandConfig() {
+async function syncAndApplyHyprlandConfig(isStartup = false) {
   const monitorsConfPath = path.join(os.homedir(), '.config/hypr/monitors.conf')
   let neededHeadlessCount = 0
   if (fs.existsSync(monitorsConfPath)) {
@@ -179,6 +179,15 @@ async function syncAndApplyHyprlandConfig() {
   }
 
   spawn('hyprctl', ['reload'])
+
+  if (isStartup) {
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        console.log('Sending startup_monitor_sync_completed event to renderer...')
+        mainWindow.webContents.send('startup_monitor_sync_completed')
+      }
+    }, 1000)
+  }
 }
 
 ipcMain.handle('apply_hyprland_config', async (_, args: { config: string }) => {
@@ -340,7 +349,27 @@ ipcMain.handle('set_startup_mode', async (_, { enabled }: { enabled: boolean }) 
   return true
 })
 
+const activeOverlayProcesses = new Map<string, any>()
+
 async function identifyMonitors(targetMonitorName?: string): Promise<void> {
+  // Terminate existing overlays for the target monitor(s) to avoid duplicates
+  if (targetMonitorName) {
+    const existing = activeOverlayProcesses.get(targetMonitorName)
+    if (existing) {
+      try {
+        existing.kill()
+      } catch (e) {}
+      activeOverlayProcesses.delete(targetMonitorName)
+    }
+  } else {
+    activeOverlayProcesses.forEach((proc) => {
+      try {
+        proc.kill()
+      } catch (e) {}
+    })
+    activeOverlayProcesses.clear()
+  }
+
   let hyprMonitors: any[] = []
   try {
     const { stdout } = await execAsync('hyprctl monitors -j')
@@ -365,6 +394,15 @@ async function identifyMonitors(targetMonitorName?: string): Promise<void> {
     // Jika targetMonitorName diberikan, lewatkan monitor yang tidak cocok
     if (targetMonitorName && m.name !== targetMonitorName) return
 
+    // Ensure we kill any existing process for this monitor before spawning a new one
+    const existing = activeOverlayProcesses.get(m.name)
+    if (existing) {
+      try {
+        existing.kill()
+      } catch (e) {}
+      activeOverlayProcesses.delete(m.name)
+    }
+
     const monLabel = m.description || m.name
     
     // Spawn dengan penanganan error yang lebih baik
@@ -378,11 +416,19 @@ async function identifyMonitors(targetMonitorName?: string): Promise<void> {
       index.toString()
     ])
 
+    activeOverlayProcesses.set(m.name, pyProcess)
+
     pyProcess.stdout.on('data', (data) => console.log(`Python Output [${m.name}]: ${data}`));
     pyProcess.stderr.on('data', (data) => console.error(`Python Error [${m.name}]: ${data}`));
     
     pyProcess.on('error', (err) => {
       console.error(`Failed to start Python process for ${m.name}:`, err);
+    });
+
+    pyProcess.on('close', () => {
+      if (activeOverlayProcesses.get(m.name) === pyProcess) {
+        activeOverlayProcesses.delete(m.name)
+      }
     });
   })
 }
@@ -896,7 +942,7 @@ if (!isSingleInstance) {
   // Auto-trigger identifier and reload configs after startup (delay for better reliability)
   setTimeout(() => {
     console.log('Performing startup monitor sync...')
-    syncAndApplyHyprlandConfig()
+    syncAndApplyHyprlandConfig(true)
   }, 2000)
 
   app.on('activate', function () {
