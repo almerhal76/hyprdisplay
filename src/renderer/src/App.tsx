@@ -403,25 +403,43 @@ function Dashboard() {
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    checkForUpdates();
-    
-    // Check autostart status from system
-    invoke<boolean>('get_autostart').then(enabled => {
-      setLaunchOnStartup(enabled);
-    }).catch(() => {});
+    const init = async () => {
+      console.log(">>> CONSOLIDATED INIT START <<<");
+      try {
+        checkForUpdates();
 
-    invoke<boolean>('get_start_hidden').then(hidden => {
-      setStartHidden(hidden);
-    }).catch(() => {});
+        // 1. Get profiles
+        const p = await invoke<string[]>("get_profiles");
+        setProfiles(p);
 
-    fetchVncStatus();
-  }, []);
+        // 2. Load background and autostart settings
+        const bg = await invoke<boolean>("get_background_mode");
+        setRunInBackground(bg);
 
-  useEffect(() => {
-    fetchMonitors();
-    fetchProfiles();
-    fetchLastProfile();
-    identifyMonitors();
+        const config = await invoke<string>("get_custom_config", { filename: "execs.conf" });
+        const exePath = await invoke<string>("get_executable_path");
+        setLaunchOnStartup(config.includes(`${exePath} --apply`));
+
+        // 3. Check start hidden
+        const hidden = await invoke<boolean>('get_start_hidden');
+        setStartHidden(hidden);
+
+        // 4. Fetch VNC status
+        await fetchVncStatus();
+
+        // 5. Load last profile
+        const last = await invoke<string>("get_last_profile");
+        console.log("Loading last profile:", last);
+        setCurrentProfile(last || 'Default');
+
+        // 6. Identify monitors (overlay numbers)
+        identifyMonitors();
+      } catch (err) {
+        console.error("Startup error:", err);
+        setCurrentProfile('Default');
+      }
+    };
+    init();
   }, []);
 
   useEffect(() => {
@@ -440,20 +458,6 @@ function Dashboard() {
       unsubVnc();
     };
   }, []);
-
-  const fetchProfiles = async () => {
-    try {
-      const p = await invoke<string[]>("get_profiles");
-      setProfiles(p);
-    } catch (e) {}
-  };
-
-  const fetchLastProfile = async () => {
-    try {
-      const name = await invoke<string>("get_last_profile");
-      if (name) setCurrentProfile(name);
-    } catch (e) {}
-  };
 
   const identifyMonitors = async () => {
     try {
@@ -744,35 +748,6 @@ function Dashboard() {
     setSelectedFrameId(null);
   };
 
-  useEffect(() => {
-    const init = async () => {
-      console.log(">>> INIT START <<<");
-      try {
-        // 1. Load profiles list first
-        const p = await invoke<string[]>("get_profiles");
-        setProfiles(p);
-
-        // 2. Load other settings
-        const bg = await invoke<boolean>("get_background_mode");
-        setRunInBackground(bg);
-
-        const config = await invoke<string>("get_custom_config", { filename: "execs.conf" });
-        const exePath = await invoke<string>("get_executable_path");
-        setLaunchOnStartup(config.includes(`${exePath} --apply`));
-
-        // 3. Load last profile
-        const last = await invoke<string>("get_last_profile");
-        console.log("Loading last profile:", last);
-        setTimeout(() => {
-          setCurrentProfile(last || 'Default');
-        }, 150);
-      } catch (err) {
-        console.error("Startup error:", err);
-        setCurrentProfile('Default');
-      }
-    };
-    init();
-  }, []);
 
   useEffect(() => {
     if (currentProfile === null) return;
@@ -807,8 +782,18 @@ function Dashboard() {
       }
     });
 
+    const unsubMonitorChanged = api.on('hyprland_monitor_changed', () => {
+      console.log('Received hyprland_monitor_changed event, reloading profile/monitors...');
+      if (currentProfile && currentProfile !== 'Default') {
+        loadProfileData(currentProfile);
+      } else {
+        fetchMonitors();
+      }
+    });
+
     return () => {
       unsubSync();
+      unsubMonitorChanged();
     };
   }, [currentProfile]);
 

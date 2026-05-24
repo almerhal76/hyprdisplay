@@ -8,6 +8,7 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import { autoUpdater } from 'electron-updater'
+import * as net from 'net'
 
 const execAsync = promisify(exec)
 
@@ -909,6 +910,75 @@ function syncAutostartPath(): void {
   }
 }
 
+function startHyprlandEventListener(): void {
+  const signature = process.env.HYPRLAND_INSTANCE_SIGNATURE
+  if (!signature) {
+    console.log('HYPRLAND_INSTANCE_SIGNATURE not found. Not listening to Hyprland events.')
+    return
+  }
+
+  const xdgRuntimeDir = process.env.XDG_RUNTIME_DIR
+  let socketPath = `/tmp/hypr/${signature}/.socket2.sock`
+  if (xdgRuntimeDir) {
+    const xdgSocketPath = path.join(xdgRuntimeDir, 'hypr', signature, '.socket2.sock')
+    if (fs.existsSync(xdgSocketPath)) {
+      socketPath = xdgSocketPath
+    }
+  }
+
+  let client: net.Socket | null = null
+
+  const connect = (): void => {
+    client = net.createConnection(socketPath)
+
+    client.on('connect', () => {
+      console.log('Connected to Hyprland event socket.')
+    })
+
+    client.on('data', (data) => {
+      const messages = data.toString().split('\n')
+      let shouldReload = false
+
+      for (const msg of messages) {
+        const trimmed = msg.trim()
+        if (trimmed.startsWith('monitoradded>>') || trimmed.startsWith('monitorremoved>>')) {
+          console.log(`Hyprland event detected: ${trimmed}`)
+          shouldReload = true
+        }
+      }
+
+      if (shouldReload) {
+        if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+          console.log('Notifying renderer to reload monitors...')
+          mainWindow.webContents.send('hyprland_monitor_changed')
+        }
+      }
+    })
+
+    client.on('error', (err) => {
+      console.error('Hyprland event socket error:', err)
+    })
+
+    client.on('close', () => {
+      console.log('Hyprland event socket closed. Reconnecting in 3 seconds...')
+      if (client) {
+        client.destroy()
+        client = null
+      }
+      setTimeout(connect, 3000)
+    })
+  }
+
+  connect()
+
+  // Clean up socket on app quit
+  app.on('will-quit', () => {
+    if (client) {
+      client.destroy()
+    }
+  })
+}
+
 const isSingleInstance = app.requestSingleInstanceLock()
 
 if (!isSingleInstance) {
@@ -955,6 +1025,7 @@ if (!isSingleInstance) {
   createWindow()
   createTray()
   syncAutostartPath()
+  startHyprlandEventListener()
   initializeUpdater()
 
   // Auto-check for updates shortly after startup (only in production)
