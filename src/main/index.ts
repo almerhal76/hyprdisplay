@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, Tray, Menu, nativeImage } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, Tray, Menu, nativeImage, Notification } from 'electron'
 import { join } from 'path'
 import { optimizer, is } from '@electron-toolkit/utils'
 import iconAsset from '../../resources/icon.png?asset'
@@ -211,8 +211,33 @@ ipcMain.handle('apply_workspace_config', async (_, args: { config: string }) => 
   const filePath = path.join(os.homedir(), '.config/hypr/workspaces.conf')
   const dir = path.dirname(filePath)
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+
+  let hasChanged = false
+  if (fs.existsSync(filePath)) {
+    const existingConfig = fs.readFileSync(filePath, 'utf-8')
+    if (existingConfig.trim() !== args.config.trim()) {
+      hasChanged = true
+    }
+  } else {
+    if (args.config.trim() !== '') {
+      hasChanged = true
+    }
+  }
+
   fs.writeFileSync(filePath, args.config)
-  return
+
+  if (hasChanged) {
+    if (Notification.isSupported()) {
+      const notification = new Notification({
+        title: 'Reboot Diperlukan',
+        body: 'Perubahan pada workspace telah diterapkan. Silakan reboot sistem agar perubahan terlihat.',
+        icon: path.join(os.homedir(), '.local/share/icons/hyprdisplay.png')
+      })
+      notification.show()
+    }
+  }
+
+  return hasChanged
 })
 
 ipcMain.handle('update_custom_config', async (_, args: { filename: string, content: string }) => {
@@ -722,12 +747,14 @@ ipcMain.handle('start_vnc_stream', async (_, { monitorName, port, password }: { 
       if (activeWayVncProcesses.get(monitorName)?.process === wayvncProc) {
         activeWayVncProcesses.delete(monitorName)
       }
-      mainWindow?.webContents.send('vnc_status_changed', { 
-        monitorName, 
-        active: false, 
-        code, 
-        error: code !== 0 ? 'capture_failed' : undefined 
-      })
+      if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+        mainWindow.webContents.send('vnc_status_changed', { 
+          monitorName, 
+          active: false, 
+          code, 
+          error: code !== 0 ? 'capture_failed' : undefined 
+        })
+      }
     });
 
     activeWayVncProcesses.set(monitorName, { process: wayvncProc, port })
