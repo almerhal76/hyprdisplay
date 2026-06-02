@@ -1,36 +1,40 @@
-# 🚀 Release Notes - v0.1.8
+# 🚀 Release Notes - v0.1.9
 
-This release introduces major stability enhancements, real-time monitor event synchronization, and critical bug fixes regarding initialization race conditions.
+This release introduces the highly requested **Auto-Apply on Hotplug** feature, resolving default resolution drops on display reconnection, alongside backend settings persistence fixes and compiler stability improvements.
 
 ---
 
 ## 🇮🇩 Ringkasan Rilis (Bahasa Indonesia)
 
-Rilis versi `v0.1.8` ini difokuskan pada peningkatan stabilitas pemetaan monitor, sinkronisasi layar secara real-time, dan perbaikan *race condition* saat aplikasi pertama kali dibuka.
+Rilis versi `v0.1.9` ini menghadirkan fitur **Auto-Apply on Hotplug** untuk menerapkan konfigurasi layar secara otomatis ketika monitor dicolokkan/dicabut, perbaikan persistensi pengaturan backend, serta stabilitas kompilasi tipe data TypeScript.
 
 ### 🌟 Fitur Baru & Peningkatan
-*   **Pemantau Monitor Real-time (Hotplug Listener)**: Aplikasi kini terhubung langsung ke soket event internal Hyprland (`socket2`). Setiap kali Anda mencolokkan atau mencabut monitor (HDMI/DisplayPort) atau membuat monitor virtual, tampilan layout pada aplikasi akan langsung diperbarui secara otomatis tanpa perlu menekan tombol refresh.
-*   **Resolusi Soket Dinamis**: Mendukung deteksi lokasi soket baru pada versi Hyprland terbaru (di bawah `$XDG_RUNTIME_DIR/hypr/`) dengan sistem *fallback* otomatis ke `/tmp/hypr/` pada versi yang lebih lama.
+*   **Auto-Apply on Hotplug (Terapkan Otomatis)**: Sekarang aplikasi secara otomatis menerapkan koordinat, resolusi, dan skala monitor yang tersimpan di profil aktif saat ada event layar dicolokkan/dicabut (hotplug). Anda tidak perlu lagi membuka aplikasi dan mengeklik tombol "Apply" secara manual setelah menyambungkan monitor eksternal.
+*   **Opsi Pengaturan Baru**: Menambahkan tombol pilihan *"Auto Apply on Hotplug"* di dalam menu aplikasi agar fitur ini dapat diaktifkan atau dinonaktifkan sesuai preferensi Anda.
 
-### 🐛 Perbaikan Bug
-*   **Perbaikan Balapan State Inisialisasi (*Race Condition* on Mount)**: Memperbaiki masalah di mana layout layar yang sudah tersimpan di profil (seperti `HDMI-A-1` dan `HEADLESS-2`) tidak muncul/kosong saat aplikasi pertama kali dibuka. Kami telah meniadakan proses pembacaan monitor mentah paralel yang sebelumnya menimpa konfigurasi profil Anda pada saat memuat aplikasi.
+### 🐛 Perbaikan Bug & Stabilitas
+*   **Perbaikan Persistensi Pengaturan Tray**: Memperbaiki bug di mana opsi pengaturan *"Run in Background"* (tray) tidak tersimpan secara permanen karena handler backend `set_background_mode` yang terlewatkan. Kini status tray tersimpan dengan benar di `settings.json`.
+*   **Stabilitas Kompilasi TypeScript**: Menyelesaikan kesalahan penulisan tipe data (`TS7030`) terkait pengembalian nilai implisit pada fungsi pembacaan data monitor (`fetchMonitors` dan `loadProfileData`) guna memastikan build produksi berjalan tanpa hambatan.
 
 ---
 
 ## 🇬🇧 Release Summary (English)
 
-Version `v0.1.8` focuses on state-management stability, real-time display hotplugging, and fixing mount-time race conditions when launching the app.
+Version `v0.1.9` introduces **Auto-Apply on Hotplug** to automatically restore monitor settings upon reconnection, resolves backend setting persistence bugs, and enhances TypeScript compiler stability.
 
 ### 🌟 New Features & Enhancements
-*   **Real-time Monitor Event Synchronization (Hotplug Listener)**: HyprDisplay now listens directly to Hyprland's internal event broadcaster (`socket2`). Connecting or disconnecting an external monitor (HDMI/DisplayPort) or spawning a virtual headless screen now immediately updates the canvas in real-time without requiring a manual refresh.
-*   **Dynamic Socket Path Resolution**: Added support for modern Hyprland configurations by checking the newer socket directory under `$XDG_RUNTIME_DIR/hypr/` (e.g., `/run/user/1000/hypr/`) while maintaining automatic fallback to `/tmp/hypr/` for older systems.
+*   **Auto-Apply on Hotplug**: The application now automatically applies the coordinates, resolution, and scaling configured in your active profile whenever a display connection change is detected. No more manual "Apply" button clicks when hotplugging external screens.
+*   **User Setting Toggle**: Added an *"Auto Apply on Hotplug"* switch in the application settings modal to easily enable or disable automatic display syncing.
 
-### 🐛 Bug Fixes
-*   **Initialization Race Condition Fix**: Resolved an issue where monitors saved in a profile (like `HDMI-A-1` and `HEADLESS-2`) failed to load inside their layout slots when the application was opened. We consolidated the startup hooks and eliminated concurrent state overwrites, ensuring your layouts load correctly from the very first second.
+### 🐛 Bug Fixes & Stability
+*   **Tray Settings Persistence Fix**: Resolved an issue where the *"Run in Background"* (system tray) setting failed to persist by implementing the missing backend IPC handler (`set_background_mode`). Settings are now correctly saved to `settings.json`.
+*   **TypeScript Compilation Stability**: Fixed TypeScript compiler warnings (`TS7030` - "Not all code paths return a value") within `fetchMonitors` and `loadProfileData` to ensure seamless production builds.
 
 ---
 
 ## 📦 What's Changed
-*   Consolidated duplicate mounting `useEffect` hooks in `App.tsx` into a single, race-free flow.
-*   Added active UNIX domain socket listener inside `index.ts` connecting to Hyprland's event broadcast socket.
-*   Bumped version number to `0.1.8` in `package.json` and `README.md`.
+*   Implemented `get_auto_apply` and `set_auto_apply` IPC handlers.
+*   Implemented missing `set_background_mode` IPC handler in the main process.
+*   Refactored config-generation logic in `App.tsx` into a reusable `generateConfigs` helper.
+*   Implemented a silent, non-blocking config applier `applyConfigSilently` for hotplug automation.
+*   Updated `package.json` to `0.1.9`.
