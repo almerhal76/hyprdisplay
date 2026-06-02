@@ -360,6 +360,43 @@ ipcMain.handle('get_background_mode', async () => {
   return true
 })
 
+ipcMain.handle('set_background_mode', async (_, { enabled }: { enabled: boolean }) => {
+  const filePath = path.join(os.homedir(), '.config/nwg-react-displays/settings.json')
+  let settings: any = {}
+  if (fs.existsSync(filePath)) {
+    try { settings = JSON.parse(fs.readFileSync(filePath, 'utf-8')) } catch (e) { }
+  }
+  settings.run_in_background = enabled
+  const dir = path.dirname(filePath)
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(filePath, JSON.stringify(settings, null, 2))
+  return true
+})
+
+ipcMain.handle('get_auto_apply', async () => {
+  const filePath = path.join(os.homedir(), '.config/nwg-react-displays/settings.json')
+  if (fs.existsSync(filePath)) {
+    try {
+      const settings = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+      return settings.auto_apply !== undefined ? settings.auto_apply : true
+    } catch (e) { }
+  }
+  return true
+})
+
+ipcMain.handle('set_auto_apply', async (_, enabled: boolean) => {
+  const filePath = path.join(os.homedir(), '.config/nwg-react-displays/settings.json')
+  let settings: any = {}
+  if (fs.existsSync(filePath)) {
+    try { settings = JSON.parse(fs.readFileSync(filePath, 'utf-8')) } catch (e) { }
+  }
+  settings.auto_apply = enabled
+  const dir = path.dirname(filePath)
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(filePath, JSON.stringify(settings, null, 2))
+  return true
+})
+
 ipcMain.handle('get_startup_mode', async () => {
   return app.getLoginItemSettings().openAtLogin
 })

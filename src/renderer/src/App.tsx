@@ -290,6 +290,7 @@ function Dashboard() {
   const [updateProgress, setUpdateProgress] = useState(0);
   const [newVersion, setNewVersion] = useState("");
   const [startHidden, setStartHidden] = useState(false);
+  const [autoApply, setAutoApply] = useState(true);
 
   useEffect(() => {
     getVersion().then(v => setAppVersion(`v${v}`)).catch(() => {});
@@ -423,6 +424,12 @@ function Dashboard() {
         // 3. Check start hidden
         const hidden = await invoke<boolean>('get_start_hidden');
         setStartHidden(hidden);
+
+        // Check auto apply on hotplug
+        try {
+          const autoApplyVal = await invoke<boolean>('get_auto_apply');
+          setAutoApply(autoApplyVal);
+        } catch (e) {}
 
         // 4. Fetch VNC status
         await fetchVncStatus();
@@ -640,8 +647,10 @@ function Dashboard() {
         setProfiles(p);
       } catch (e) {}
 
+      return formatted;
     } catch (err) {
       showToast("Failed to fetch monitors", "error");
+      return [];
     } finally {
       setLoading(false);
     }
@@ -660,12 +669,12 @@ function Dashboard() {
       } catch (e) {
         showToast("Profile format outdated. Switching to Default.", "error");
         setCurrentProfile('Default');
-        return;
+        return [];
       }
 
       if (!profile.monitors || profile.monitors.length === 0) {
         setCurrentProfile('Default');
-        return;
+        return [];
       }
       
       const formatted: Monitor[] = parsedCurrent.map((m: any) => {
@@ -731,9 +740,10 @@ function Dashboard() {
 
       setMonitors(formatted);
       if (profile.layoutFrames) setLayoutFrames(profile.layoutFrames);
-      
+      return formatted;
     } catch (e) {
       showToast("Failed to load profile", "error");
+      return [];
     } finally {
       setLoading(false);
     }
@@ -773,21 +783,29 @@ function Dashboard() {
     const api = (window as any).api;
     if (!api || !api.on) return;
 
-    const unsubSync = api.on('startup_monitor_sync_completed', () => {
+    const unsubSync = api.on('startup_monitor_sync_completed', async () => {
       console.log('Received startup_monitor_sync_completed event, reloading profile/monitors...');
+      let updatedMonitors: Monitor[] = [];
       if (currentProfile && currentProfile !== 'Default') {
-        loadProfileData(currentProfile);
+        updatedMonitors = await loadProfileData(currentProfile) || [];
       } else {
-        fetchMonitors();
+        updatedMonitors = await fetchMonitors() || [];
+      }
+      if (autoApply && updatedMonitors.length > 0) {
+        await applyConfigSilently(updatedMonitors);
       }
     });
 
-    const unsubMonitorChanged = api.on('hyprland_monitor_changed', () => {
+    const unsubMonitorChanged = api.on('hyprland_monitor_changed', async () => {
       console.log('Received hyprland_monitor_changed event, reloading profile/monitors...');
+      let updatedMonitors: Monitor[] = [];
       if (currentProfile && currentProfile !== 'Default') {
-        loadProfileData(currentProfile);
+        updatedMonitors = await loadProfileData(currentProfile) || [];
       } else {
-        fetchMonitors();
+        updatedMonitors = await fetchMonitors() || [];
+      }
+      if (autoApply && updatedMonitors.length > 0) {
+        await applyConfigSilently(updatedMonitors);
       }
     });
 
@@ -795,7 +813,7 @@ function Dashboard() {
       unsubSync();
       unsubMonitorChanged();
     };
-  }, [currentProfile]);
+  }, [currentProfile, autoApply]);
 
   const updateMonitor = (id: string, updates: Partial<Monitor>) => {
     setMonitors(prev => {
@@ -831,14 +849,9 @@ function Dashboard() {
     });
   };
 
-  const handleApply = async () => {
-    let backupConfig = "";
-    try {
-      backupConfig = await invoke<string>("get_monitors_config");
-    } catch (e) {}
-
-    const primaryMonitor = monitors.find(m => m.isPrimary) || monitors[0];
-    const sortedMonitors = [...monitors].sort((a, b) => (a.isPrimary === b.isPrimary) ? 0 : a.isPrimary ? -1 : 1);
+  const generateConfigs = (monitorsList: Monitor[]) => {
+    const primaryMonitor = monitorsList.find(m => m.isPrimary) || monitorsList[0];
+    const sortedMonitors = [...monitorsList].sort((a, b) => (a.isPrimary === b.isPrimary) ? 0 : a.isPrimary ? -1 : 1);
     let configLines = sortedMonitors.map(m => {
       let line = `monitor=${m.name},${m.width}x${m.height}@${m.refreshRate},${Math.round(m.x)}x${Math.round(m.y)},${m.scale}`;
       if (m.transform !== 0) line += `,transform,${m.transform}`;
@@ -880,6 +893,38 @@ function Dashboard() {
       .join('\n');
 
     const workspaceConfig = workspaceLines ? `# Generated Workspace Bindings\n${workspaceLines}` : "";
+    return { configLines, workspaceConfig, primaryMonitor };
+  };
+
+  const applyConfigSilently = async (monitorsList: Monitor[]) => {
+    if (monitorsList.length === 0) return;
+    const { configLines, workspaceConfig, primaryMonitor } = generateConfigs(monitorsList);
+    try {
+      // Simpan konfigurasi monitor ke monitors.conf
+      await invoke('apply_hyprland_config', { config: configLines });
+      
+      // Simpan konfigurasi workspace ke workspaces.conf
+      await invoke('apply_workspace_config', { config: workspaceConfig });
+
+      if (primaryMonitor) {
+        const exePath = await invoke<string>('get_executable_path');
+        await invoke('update_custom_config', { filename: 'env.conf', content: `env = WAYLANDDRV_PRIMARY_MONITOR,${primaryMonitor.name}` });
+        await invoke('update_custom_config', { filename: 'execs.conf', content: `exec-once = ${exePath} --apply` });
+      }
+
+      showToast("Profile auto-applied on display change", "success");
+    } catch (err) {
+      console.error("Auto-apply config failed:", err);
+    }
+  };
+
+  const handleApply = async () => {
+    let backupConfig = "";
+    try {
+      backupConfig = await invoke<string>("get_monitors_config");
+    } catch (e) {}
+
+    const { configLines, workspaceConfig, primaryMonitor } = generateConfigs(monitors);
 
     try {
       // Simpan konfigurasi monitor ke monitors.conf
@@ -2039,6 +2084,32 @@ function Dashboard() {
                     />
                   </div>
                 </motion.div>
+              </div>
+
+              <div className="settings-group" style={{ marginBottom: '24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: '14px', color: 'white', marginBottom: '4px' }}>Auto Apply on Hotplug</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-dim)' }}>Automatically restore monitor resolution and layout when connected</div>
+                  </div>
+                  <div 
+                    onClick={async () => {
+                      const newState = !autoApply;
+                      setAutoApply(newState);
+                      await invoke('set_auto_apply', newState);
+                      showToast(`Auto-apply ${newState ? 'enabled' : 'disabled'}`, 'info');
+                    }}
+                    style={{ 
+                      width: '40px', height: '22px', borderRadius: '20px', background: autoApply ? 'var(--accent)' : 'rgba(255,255,255,0.1)', 
+                      position: 'relative', cursor: 'pointer', transition: 'all 0.3s'
+                    }}
+                  >
+                    <motion.div 
+                      animate={{ x: autoApply ? 20 : 2 }}
+                      style={{ width: '18px', height: '18px', borderRadius: '50%', background: 'white', position: 'absolute', top: 2, left: 0 }}
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="settings-group" style={{ marginBottom: '24px', paddingTop: '20px', borderTop: '1px solid var(--border)' }}>
