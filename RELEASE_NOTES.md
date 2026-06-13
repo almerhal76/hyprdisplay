@@ -1,40 +1,35 @@
-# 🚀 Release Notes - v0.1.9
+# 🚀 Release Notes - v0.1.10
 
-This release introduces the highly requested **Auto-Apply on Hotplug** feature, resolving default resolution drops on display reconnection, alongside backend settings persistence fixes and compiler stability improvements.
+This release introduces native support for Hyprland Lua configurations (introduced in Hyprland 0.55+), automatically generating and updating `.lua` configuration files alongside standard `.conf` files.
 
 ---
 
 ## 🇮🇩 Ringkasan Rilis (Bahasa Indonesia)
 
-Rilis versi `v0.1.9` ini menghadirkan fitur **Auto-Apply on Hotplug** untuk menerapkan konfigurasi layar secara otomatis ketika monitor dicolokkan/dicabut, perbaikan persistensi pengaturan backend, serta stabilitas kompilasi tipe data TypeScript.
+Rilis versi `v0.1.10` ini menghadirkan dukungan native untuk konfigurasi Hyprland berbasis Lua (Hyprland 0.55+). Aplikasi kini secara otomatis membuat dan menyinkronkan file konfigurasi `.lua` di samping file `.conf` standar.
 
 ### 🌟 Fitur Baru & Peningkatan
-*   **Auto-Apply on Hotplug (Terapkan Otomatis)**: Sekarang aplikasi secara otomatis menerapkan koordinat, resolusi, dan skala monitor yang tersimpan di profil aktif saat ada event layar dicolokkan/dicabut (hotplug). Anda tidak perlu lagi membuka aplikasi dan mengeklik tombol "Apply" secara manual setelah menyambungkan monitor eksternal.
-*   **Opsi Pengaturan Baru**: Menambahkan tombol pilihan *"Auto Apply on Hotplug"* di dalam menu aplikasi agar fitur ini dapat diaktifkan atau dinonaktifkan sesuai preferensi Anda.
-
-### 🐛 Perbaikan Bug & Stabilitas
-*   **Perbaikan Persistensi Pengaturan Tray**: Memperbaiki bug di mana opsi pengaturan *"Run in Background"* (tray) tidak tersimpan secara permanen karena handler backend `set_background_mode` yang terlewatkan. Kini status tray tersimpan dengan benar di `settings.json`.
-*   **Stabilitas Kompilasi TypeScript**: Menyelesaikan kesalahan penulisan tipe data (`TS7030`) terkait pengembalian nilai implisit pada fungsi pembacaan data monitor (`fetchMonitors` dan `loadProfileData`) guna memastikan build produksi berjalan tanpa hambatan.
+*   **Dukungan Native Konfigurasi Lua**: Jika setup Hyprland Anda menggunakan format Lua (`hyprland.lua`), aplikasi kini secara otomatis menulis konfigurasi monitor dan workspace ke `monitors.lua` dan `workspaces.lua` menggunakan syntax `hl.monitor` dan `hl.workspace_rule`.
+*   **Sinkronisasi Variabel & Eksekusi Kustom**: Custom environment variables dan auto-start commands sekarang juga disinkronkan ke file `custom/env.lua` dan `custom/execs.lua`.
+*   **Sinkronisasi Jalur Eksekusi**: Memastikan jalur AppImage yang sedang berjalan selalu sinkron di file `custom/execs.conf` dan `custom/execs.lua`.
 
 ---
 
 ## 🇬🇧 Release Summary (English)
 
-Version `v0.1.9` introduces **Auto-Apply on Hotplug** to automatically restore monitor settings upon reconnection, resolves backend setting persistence bugs, and enhances TypeScript compiler stability.
+Version `v0.1.10` introduces native support for Hyprland Lua configurations. The application now automatically generates and updates `.lua` configuration files alongside standard `.conf` files.
 
 ### 🌟 New Features & Enhancements
-*   **Auto-Apply on Hotplug**: The application now automatically applies the coordinates, resolution, and scaling configured in your active profile whenever a display connection change is detected. No more manual "Apply" button clicks when hotplugging external screens.
-*   **User Setting Toggle**: Added an *"Auto Apply on Hotplug"* switch in the application settings modal to easily enable or disable automatic display syncing.
-
-### 🐛 Bug Fixes & Stability
-*   **Tray Settings Persistence Fix**: Resolved an issue where the *"Run in Background"* (system tray) setting failed to persist by implementing the missing backend IPC handler (`set_background_mode`). Settings are now correctly saved to `settings.json`.
-*   **TypeScript Compilation Stability**: Fixed TypeScript compiler warnings (`TS7030` - "Not all code paths return a value") within `fetchMonitors` and `loadProfileData` to ensure seamless production builds.
+*   **Native Lua Config Support**: For Hyprland setups utilizing Lua configuration structure (`hyprland.lua`), the application now automatically writes display settings and workspace mappings to `monitors.lua` and `workspaces.lua` using `hl.monitor` and `hl.workspace_rule` syntax.
+*   **Custom Lua Variables & Execution Sync**: Custom environment variables and startup commands are now synchronized to `custom/env.lua` and `custom/execs.lua` as well.
+*   **Execution Path Synchronization**: Ensures the active AppImage path is kept up to date inside both `custom/execs.conf` and `custom/execs.lua`.
 
 ---
 
 ## 📦 What's Changed
-*   Implemented `get_auto_apply` and `set_auto_apply` IPC handlers.
-*   Implemented missing `set_background_mode` IPC handler in the main process.
-*   Refactored config-generation logic in `App.tsx` into a reusable `generateConfigs` helper.
-*   Implemented a silent, non-blocking config applier `applyConfigSilently` for hotplug automation.
-*   Updated `package.json` to `0.1.9`.
+*   Implemented `.conf` to `.lua` conversion helper functions in `src/main/index.ts`.
+*   Updated `apply_hyprland_config` to write `monitors.lua`.
+*   Updated `apply_workspace_config` to write `workspaces.lua`.
+*   Updated `update_custom_config` to write to `custom/env.lua` and `custom/execs.lua`.
+*   Updated `syncAutostartPath` to sync current executable inside `custom/execs.lua`.
+*   Updated `package.json` to `0.1.10`.
