@@ -1,35 +1,37 @@
-# 🚀 Release Notes - v0.1.10
+# 🚀 Release Notes - v0.1.11
 
-This release introduces native support for Hyprland Lua configurations (introduced in Hyprland 0.55+), automatically generating and updating `.lua` configuration files alongside standard `.conf` files.
+This release adds a comprehensive Cursor Configuration module to easily manage, preview, and apply cursor themes and sizes.
 
 ---
 
 ## 🇮🇩 Ringkasan Rilis (Bahasa Indonesia)
 
-Rilis versi `v0.1.10` ini menghadirkan dukungan native untuk konfigurasi Hyprland berbasis Lua (Hyprland 0.55+). Aplikasi kini secara otomatis membuat dan menyinkronkan file konfigurasi `.lua` di samping file `.conf` standar.
+Rilis versi `v0.1.11` ini menghadirkan fitur **Cursor Configuration** (Pengaturan Kursor) untuk memudahkan pengguna mengelola, mempratinjau, dan menerapkan tema serta ukuran kursor secara langsung dan persisten.
 
 ### 🌟 Fitur Baru & Peningkatan
-*   **Dukungan Native Konfigurasi Lua**: Jika setup Hyprland Anda menggunakan format Lua (`hyprland.lua`), aplikasi kini secara otomatis menulis konfigurasi monitor dan workspace ke `monitors.lua` dan `workspaces.lua` menggunakan syntax `hl.monitor` dan `hl.workspace_rule`.
-*   **Sinkronisasi Variabel & Eksekusi Kustom**: Custom environment variables dan auto-start commands sekarang juga disinkronkan ke file `custom/env.lua` dan `custom/execs.lua`.
-*   **Sinkronisasi Jalur Eksekusi**: Memastikan jalur AppImage yang sedang berjalan selalu sinkron di file `custom/execs.conf` dan `custom/execs.lua`.
+*   **Pengaturan Tema & Ukuran Kursor**: Memungkinkan pemilihan tema kursor yang terinstal di sistem Linux (dari `/usr/share/icons`, `~/.icons`, dan `~/.local/share/icons`).
+*   **Penerapan Instan & Persisten**:
+    - Kursor langsung berubah di sesi aktif menggunakan `hyprctl setcursor`.
+    - Sinkronisasi setelan ke aplikasi GTK menggunakan `gsettings`.
+    - Menyimpan otomatis di `settings.json` dan menambahkan variabel lingkungan kursor (`XCURSOR_THEME`, `XCURSOR_SIZE`, dll.) secara aman di `custom/env.conf` (yang juga disinkronkan ke `env.lua` format Lua).
 
 ---
 
 ## 🇬🇧 Release Summary (English)
 
-Version `v0.1.10` introduces native support for Hyprland Lua configurations. The application now automatically generates and updates `.lua` configuration files alongside standard `.conf` files.
+Version `v0.1.11` introduces a fully integrated **Cursor Configuration** utility to easily manage, preview, and apply cursor themes and sizes.
 
 ### 🌟 New Features & Enhancements
-*   **Native Lua Config Support**: For Hyprland setups utilizing Lua configuration structure (`hyprland.lua`), the application now automatically writes display settings and workspace mappings to `monitors.lua` and `workspaces.lua` using `hl.monitor` and `hl.workspace_rule` syntax.
-*   **Custom Lua Variables & Execution Sync**: Custom environment variables and startup commands are now synchronized to `custom/env.lua` and `custom/execs.lua` as well.
-*   **Execution Path Synchronization**: Ensures the active AppImage path is kept up to date inside both `custom/execs.conf` and `custom/execs.lua`.
+*   **Cursor Theme & Size Picker**: Automatically detects installed cursor themes in standard Linux directories (`/usr/share/icons`, `~/.icons`, and `~/.local/share/icons`).
+*   **Instant & Persistent Application**:
+    - Dynamically updates active session cursors using `hyprctl setcursor`.
+    - Automatically syncs GNOME/GTK application compatibility using `gsettings`.
+    - Persists settings in `settings.json` and updates `custom/env.conf` (synced to Lua structure `custom/env.lua`).
 
 ---
 
 ## 📦 What's Changed
-*   Implemented `.conf` to `.lua` conversion helper functions in `src/main/index.ts`.
-*   Updated `apply_hyprland_config` to write `monitors.lua`.
-*   Updated `apply_workspace_config` to write `workspaces.lua`.
-*   Updated `update_custom_config` to write to `custom/env.lua` and `custom/execs.lua`.
-*   Updated `syncAutostartPath` to sync current executable inside `custom/execs.lua`.
-*   Updated `package.json` to `0.1.10`.
+*   Implemented cursor theme directory scanner and dynamic application handlers in `src/main/index.ts`.
+*   Added cursor themes, size, and selected theme states in React frontend `src/renderer/src/App.tsx`.
+*   Integrated **Cursor Configuration** settings group layout inside the Settings modal.
+*   Updated `package.json`, `package-lock.json`, and `README.md` version badges to `0.1.11`.

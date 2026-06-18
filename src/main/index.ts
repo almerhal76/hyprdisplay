@@ -1038,6 +1038,148 @@ ipcMain.handle('get_vnc_status', async () => {
   return { wayvncInstalled, activeStreams }
 })
 
+// Cursor configuration helpers and IPC handlers
+async function getAvailableCursorThemes(): Promise<string[]> {
+  const searchPaths = [
+    path.join(os.homedir(), '.icons'),
+    path.join(os.homedir(), '.local/share/icons'),
+    '/usr/share/icons',
+    '/usr/local/share/icons'
+  ];
+
+  const themes = new Set<string>();
+
+  for (const dir of searchPaths) {
+    if (fs.existsSync(dir)) {
+      try {
+        const subdirs = fs.readdirSync(dir);
+        for (const subdir of subdirs) {
+          const cursorsPath = path.join(dir, subdir, 'cursors');
+          if (fs.existsSync(cursorsPath) && fs.statSync(cursorsPath).isDirectory()) {
+            themes.add(subdir);
+          }
+        }
+      } catch (err) {
+        console.error(`Error reading cursor dir ${dir}:`, err);
+      }
+    }
+  }
+
+  return Array.from(themes).sort();
+}
+
+ipcMain.handle('get_cursor_themes', async () => {
+  return await getAvailableCursorThemes();
+});
+
+ipcMain.handle('get_cursor_settings', async () => {
+  const filePath = path.join(os.homedir(), '.config/nwg-react-displays/settings.json');
+  let settings: any = {};
+  if (fs.existsSync(filePath)) {
+    try {
+      settings = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    } catch (e) {}
+  }
+
+  let defaultTheme = settings.cursor_theme;
+  let defaultSize = settings.cursor_size;
+
+  if (!defaultTheme) {
+    try {
+      const { stdout } = await execAsync("gsettings get org.gnome.desktop.interface cursor-theme");
+      defaultTheme = stdout.trim().replace(/'/g, "");
+    } catch (e) {
+      defaultTheme = "Adwaita";
+    }
+  }
+
+  if (!defaultSize) {
+    try {
+      const { stdout } = await execAsync("gsettings get org.gnome.desktop.interface cursor-size");
+      defaultSize = parseInt(stdout.trim()) || 24;
+    } catch (e) {
+      defaultSize = 24;
+    }
+  }
+
+  return { theme: defaultTheme, size: defaultSize };
+});
+
+ipcMain.handle('apply_cursor_settings', async (_, { theme, size }: { theme: string, size: number }) => {
+  // A. Apply dynamically in active Hyprland session
+  try {
+    await execAsync(`hyprctl setcursor ${theme} ${size}`);
+  } catch (e) {
+    console.error("Failed to run hyprctl setcursor:", e);
+  }
+
+  // B. Apply for GTK applications
+  try {
+    await execAsync(`gsettings set org.gnome.desktop.interface cursor-theme '${theme}'`);
+    await execAsync(`gsettings set org.gnome.desktop.interface cursor-size ${size}`);
+  } catch (e) {
+    console.error("Failed to run gsettings:", e);
+  }
+
+  // C. Save to app settings
+  const settingsPath = path.join(os.homedir(), '.config/nwg-react-displays/settings.json');
+  let settings: any = {};
+  if (fs.existsSync(settingsPath)) {
+    try {
+      settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+    } catch (e) {}
+  }
+  settings.cursor_theme = theme;
+  settings.cursor_size = size;
+  const settingsDir = path.dirname(settingsPath);
+  if (!fs.existsSync(settingsDir)) fs.mkdirSync(settingsDir, { recursive: true });
+  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+
+  // D. Write env variables to env.conf
+  const envPath = path.join(os.homedir(), '.config/hypr/custom/env.conf');
+  const envDir = path.dirname(envPath);
+  if (!fs.existsSync(envDir)) fs.mkdirSync(envDir, { recursive: true });
+
+  let envContent = '';
+  if (fs.existsSync(envPath)) {
+    envContent = fs.readFileSync(envPath, 'utf-8');
+  }
+
+  const lines = envContent.split('\n');
+  const cleanedLines = lines.filter(line => {
+    const trimmed = line.trim();
+    return !(
+      trimmed.startsWith('env = XCURSOR_THEME,') ||
+      trimmed.startsWith('env = XCURSOR_SIZE,') ||
+      trimmed.startsWith('env = HYPRCURSOR_THEME,') ||
+      trimmed.startsWith('env = HYPRCURSOR_SIZE,')
+    );
+  });
+
+  const cursorEnv = [
+    `env = XCURSOR_THEME,${theme}`,
+    `env = XCURSOR_SIZE,${size}`,
+    `env = HYPRCURSOR_THEME,${theme}`,
+    `env = HYPRCURSOR_SIZE,${size}`
+  ];
+
+  cleanedLines.unshift(...cursorEnv);
+
+  const newContent = cleanedLines.join('\n');
+  fs.writeFileSync(envPath, newContent);
+
+  // Sync to env.lua
+  try {
+    const luaContent = convertEnvConfToLua(newContent);
+    const luaFilePath = path.join(os.homedir(), '.config/hypr/custom/env.lua');
+    updateLuaCustomFile(luaFilePath, luaContent, false);
+  } catch (err) {
+    console.error('Failed to update env.lua:', err);
+  }
+
+  return true;
+});
+
 export function registerDesktopEntry(): void {
   if (process.platform !== 'linux') return
 

@@ -394,6 +394,24 @@ function Dashboard() {
   const [showSettings, setShowSettings] = useState(false);
   const [runInBackground, setRunInBackground] = useState(true);
   const [launchOnStartup, setLaunchOnStartup] = useState(false);
+
+  // Cursor settings states
+  const [cursorThemes, setCursorThemes] = useState<string[]>([]);
+  const [selectedTheme, setSelectedTheme] = useState("");
+  const [selectedSize, setSelectedSize] = useState(24);
+
+  useEffect(() => {
+    if (showSettings) {
+      invoke<string[]>('get_cursor_themes').then(themes => {
+        setCursorThemes(themes);
+      }).catch(console.error);
+
+      invoke<{ theme: string, size: number }>('get_cursor_settings').then(settings => {
+        setSelectedTheme(settings.theme);
+        setSelectedSize(settings.size);
+      }).catch(console.error);
+    }
+  }, [showSettings]);
   
   // Virtual monitor / Android monitor states
   const [showVirtualModal, setShowVirtualModal] = useState(false);
@@ -2108,6 +2126,54 @@ function Dashboard() {
                       animate={{ x: autoApply ? 20 : 2 }}
                       style={{ width: '18px', height: '18px', borderRadius: '50%', background: 'white', position: 'absolute', top: 2, left: 0 }}
                     />
+                  </div>
+                </div>
+              </div>
+
+              {/* Cursor Configuration */}
+              <div className="settings-group" style={{ marginBottom: '24px', paddingTop: '20px', borderTop: '1px solid var(--border)' }}>
+                <div style={{ fontSize: '14px', color: 'white', marginBottom: '12px', fontWeight: 'bold' }}>Cursor Configuration</div>
+                
+                <div style={{ marginBottom: '12px' }}>
+                  <label className="settings-label" style={{ marginBottom: '6px', display: 'block' }}>Cursor Theme</label>
+                  <CustomSelect 
+                    searchable={true}
+                    options={cursorThemes.length > 0 ? cursorThemes.map(theme => ({ label: theme, value: theme })) : [{ label: selectedTheme || 'Default', value: selectedTheme || 'default' }]}
+                    value={selectedTheme}
+                    onChange={(val) => setSelectedTheme(val)}
+                  />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', alignItems: 'center' }}>
+                  <div>
+                    <label className="settings-label" style={{ marginBottom: '6px', display: 'block' }}>Cursor Size</label>
+                    <CustomSelect 
+                      options={[
+                        { label: '16 px', value: '16' },
+                        { label: '24 px', value: '24' },
+                        { label: '32 px', value: '32' },
+                        { label: '48 px', value: '48' },
+                        { label: '64 px', value: '64' }
+                      ]}
+                      value={selectedSize.toString()}
+                      onChange={(val) => setSelectedSize(parseInt(val))}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', height: '100%' }}>
+                    <button 
+                      className="btn-primary" 
+                      style={{ width: '100%', height: '38px', fontSize: '12px', background: 'var(--accent)', cursor: 'pointer', border: 'none', borderRadius: '8px', color: 'white', fontWeight: 'bold' }}
+                      onClick={async () => {
+                        try {
+                          await invoke('apply_cursor_settings', { theme: selectedTheme, size: selectedSize });
+                          showToast("Cursor settings applied successfully!", "success");
+                        } catch (e: any) {
+                          showToast(`Failed to apply cursor: ${e.message || e}`, "error");
+                        }
+                      }}
+                    >
+                      Apply Cursor
+                    </button>
                   </div>
                 </div>
               </div>
