@@ -1180,6 +1180,104 @@ ipcMain.handle('apply_cursor_settings', async (_, { theme, size }: { theme: stri
   return true;
 });
 
+ipcMain.handle('get_cursor_theme_preview', async (_, themeName: string) => {
+  const searchPaths = [
+    path.join(os.homedir(), '.icons'),
+    path.join(os.homedir(), '.local/share/icons'),
+    '/usr/share/icons',
+    '/usr/local/share/icons'
+  ];
+
+  for (const dir of searchPaths) {
+    const themePath = path.join(dir, themeName);
+    if (fs.existsSync(themePath) && fs.statSync(themePath).isDirectory()) {
+      // 1. Try to find preview.gif, preview.png, or thumbnail.png first
+      const previewPaths = [
+        path.join(themePath, 'preview.gif'),
+        path.join(themePath, 'preview.png'),
+        path.join(themePath, 'thumbnail.png'),
+        path.join(themePath, 'icon.png')
+      ];
+
+      for (const p of previewPaths) {
+        if (fs.existsSync(p)) {
+          try {
+            const mimeType = p.endsWith('.gif') ? 'image/gif' : 'image/png';
+            const base64 = fs.readFileSync(p).toString('base64');
+            return `data:${mimeType};base64,${base64}`;
+          } catch (err) {
+            console.error(`Error reading preview image ${p}:`, err);
+          }
+        }
+      }
+
+      // 2. Try to parse left_ptr or default cursor file
+      const cursorFiles = [
+        path.join(themePath, 'cursors', 'left_ptr'),
+        path.join(themePath, 'cursors', 'default'),
+        path.join(themePath, 'cursors', 'pointer')
+      ];
+
+      for (const file of cursorFiles) {
+        if (fs.existsSync(file)) {
+          try {
+            const buffer = fs.readFileSync(file);
+            if (buffer.length < 16) continue;
+            const magic = buffer.readUInt32LE(0);
+            if (magic !== 0x72756358) continue; // 'Xcur'
+
+            const ntoc = buffer.readUInt32LE(12);
+            if (buffer.length < 16 + ntoc * 12) continue;
+
+            let bestTocEntry: { subtype: number; position: number } | null = null;
+            let bestSizeDiff = Infinity;
+            const targetSize = 32; // We prefer 32x32 for preview
+
+            for (let i = 0; i < ntoc; i++) {
+              const offset = 16 + i * 12;
+              const type = buffer.readUInt32LE(offset);
+              const subtype = buffer.readUInt32LE(offset + 4);
+              const position = buffer.readUInt32LE(offset + 8);
+
+              if (type === 0xfffd0002) {
+                const sizeDiff = Math.abs(subtype - targetSize);
+                if (sizeDiff < bestSizeDiff) {
+                  bestSizeDiff = sizeDiff;
+                  bestTocEntry = { subtype, position };
+                }
+              }
+            }
+
+            if (bestTocEntry) {
+              const pos = bestTocEntry.position;
+              if (buffer.length < pos + 36) continue;
+
+              const chunkHeaderSize = buffer.readUInt32LE(pos);
+              const width = buffer.readUInt32LE(pos + 16);
+              const height = buffer.readUInt32LE(pos + 20);
+
+              const pixelOffset = pos + chunkHeaderSize;
+              const pixelLength = width * height * 4;
+
+              if (buffer.length < pixelOffset + pixelLength) continue;
+
+              const pixelsBuffer = buffer.slice(pixelOffset, pixelOffset + pixelLength);
+
+              // Convert BGRA raw bitmap to PNG using Electron nativeImage
+              const img = nativeImage.createFromBitmap(pixelsBuffer, { width, height });
+              return img.toDataURL();
+            }
+          } catch (err) {
+            console.error(`Error parsing Xcursor file ${file}:`, err);
+          }
+        }
+      }
+    }
+  }
+
+  return null;
+});
+
 export function registerDesktopEntry(): void {
   if (process.platform !== 'linux') return
 

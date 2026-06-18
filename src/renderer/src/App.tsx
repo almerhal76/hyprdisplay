@@ -399,6 +399,7 @@ function Dashboard() {
   const [cursorThemes, setCursorThemes] = useState<string[]>([]);
   const [selectedTheme, setSelectedTheme] = useState("");
   const [selectedSize, setSelectedSize] = useState(24);
+  const [cursorPreview, setCursorPreview] = useState<string | null>(null);
 
   useEffect(() => {
     if (showSettings) {
@@ -412,6 +413,22 @@ function Dashboard() {
       }).catch(console.error);
     }
   }, [showSettings]);
+
+  useEffect(() => {
+    if (selectedTheme) {
+      setCursorPreview(null);
+      invoke<string | null>('get_cursor_theme_preview', selectedTheme)
+        .then(preview => {
+          setCursorPreview(preview);
+        })
+        .catch(err => {
+          console.error("Failed to load cursor preview:", err);
+          setCursorPreview(null);
+        });
+    } else {
+      setCursorPreview(null);
+    }
+  }, [selectedTheme]);
   
   // Virtual monitor / Android monitor states
   const [showVirtualModal, setShowVirtualModal] = useState(false);
@@ -2006,7 +2023,8 @@ function Dashboard() {
         {showSettings && (
           <div className="modal-overlay" style={{ zIndex: 11000 }}>
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
-              style={{ background: 'var(--bg-card)', padding: '30px', borderRadius: '24px', border: '1px solid var(--border)', width: '380px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}
+              style={{ background: 'var(--bg-card)', padding: '30px', borderRadius: '24px', border: '1px solid var(--border)', width: '380px', maxHeight: '85vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}
+              className="custom-scrollbar"
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                 <h3 style={{ fontSize: '18px' }}>Application Settings</h3>
@@ -2142,6 +2160,21 @@ function Dashboard() {
                     value={selectedTheme}
                     onChange={(val) => setSelectedTheme(val)}
                   />
+                </div>
+
+                {/* Preview Box */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px', padding: '12px', background: 'rgba(0,0,0,0.15)', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                  <div style={{ width: '48px', height: '48px', borderRadius: '8px', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(255,255,255,0.1)', overflow: 'hidden' }}>
+                    {cursorPreview ? (
+                      <img src={cursorPreview} style={{ maxWidth: '32px', maxHeight: '32px', objectFit: 'contain' }} alt="Cursor Preview" />
+                    ) : (
+                      <span style={{ fontSize: '10px', color: 'var(--text-dim)' }}>Loading...</span>
+                    )}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: 'bold', color: 'white', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedTheme || 'Default'}</div>
+                    <div style={{ fontSize: '10px', color: 'var(--text-dim)' }}>Theme Preview</div>
+                  </div>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', alignItems: 'center' }}>
