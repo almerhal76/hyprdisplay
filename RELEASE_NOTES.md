@@ -1,37 +1,33 @@
-# 🚀 Release Notes - v0.1.11
+# 🚀 Release Notes - v0.1.12
 
-This release adds a comprehensive Cursor Configuration module to easily manage, preview, and apply cursor themes and sizes.
+This release adds a Cursor Preview module to view active cursor themes (either via theme images or direct parsing of Xcursor binaries) and improves the Application Settings layout with vertical scrolling.
 
 ---
 
 ## 🇮🇩 Ringkasan Rilis (Bahasa Indonesia)
 
-Rilis versi `v0.1.11` ini menghadirkan fitur **Cursor Configuration** (Pengaturan Kursor) untuk memudahkan pengguna mengelola, mempratinjau, dan menerapkan tema serta ukuran kursor secara langsung dan persisten.
+Rilis versi `v0.1.12` ini menghadirkan fitur **Cursor Theme Preview** (Pratonton Tema Kursor) secara visual, serta membenahi layout **Application Settings** agar dapat di-scroll vertikal dan ramah layar kecil.
 
 ### 🌟 Fitur Baru & Peningkatan
-*   **Pengaturan Tema & Ukuran Kursor**: Memungkinkan pemilihan tema kursor yang terinstal di sistem Linux (dari `/usr/share/icons`, `~/.icons`, dan `~/.local/share/icons`).
-*   **Penerapan Instan & Persisten**:
-    - Kursor langsung berubah di sesi aktif menggunakan `hyprctl setcursor`.
-    - Sinkronisasi setelan ke aplikasi GTK menggunakan `gsettings`.
-    - Menyimpan otomatis di `settings.json` dan menambahkan variabel lingkungan kursor (`XCURSOR_THEME`, `XCURSOR_SIZE`, dll.) secara aman di `custom/env.conf` (yang juga disinkronkan ke `env.lua` format Lua).
+*   **Visual Cursor Theme Preview**: Memperoleh pratonton kursor secara real-time. Program mencari file preview statis (`preview.gif`, dll.) di direktori tema atau mem-parsing binary file Xcursor (seperti `cursors/left_ptr`) secara manual untuk merender data pixel raw BGRA ke format PNG Data URL.
+*   **Scrollable Settings Layout**: Modal pengaturan aplikasi sekarang memiliki batasan tinggi (`maxHeight: 85vh`) dan scrollbar kustom (`overflowY: auto`), mencegah pemotongan UI pada layar berukuran kecil.
+*   **Pengaturan Tema & Ukuran Kursor**: Konfigurasi tema kursor yang instan, serta tersimpan persisten ke dalam preferensi internal aplikasi dan file konfigurasi lingkungan Hyprland (`custom/env.conf` / `custom/env.lua`).
 
 ---
 
 ## 🇬🇧 Release Summary (English)
 
-Version `v0.1.11` introduces a fully integrated **Cursor Configuration** utility to easily manage, preview, and apply cursor themes and sizes.
+Version `v0.1.12` introduces a visual **Cursor Theme Preview** and optimizes the **Application Settings** modal layout with native vertical scrolling for small screens.
 
 ### 🌟 New Features & Enhancements
-*   **Cursor Theme & Size Picker**: Automatically detects installed cursor themes in standard Linux directories (`/usr/share/icons`, `~/.icons`, and `~/.local/share/icons`).
-*   **Instant & Persistent Application**:
-    - Dynamically updates active session cursors using `hyprctl setcursor`.
-    - Automatically syncs GNOME/GTK application compatibility using `gsettings`.
-    - Persists settings in `settings.json` and updates `custom/env.conf` (synced to Lua structure `custom/env.lua`).
+*   **Visual Cursor Theme Preview**: Fetches and renders cursor previews in real-time. It locates static preview files (like `preview.gif`) or parses Xcursor binary files (like `cursors/left_ptr`) on the fly, extracting BGRA pixels to generate standard base64 PNG data URLs.
+*   **Scrollable Settings Layout**: The Settings modal now implements responsive height limits (`maxHeight: 85vh`) and custom scroll bars (`overflowY: auto`), preventing layout truncation on smaller monitors.
+*   **Cursor Configuration**: Seamlessly configures cursor theme and size. Changes apply instantly using `hyprctl setcursor` and persist securely in internal preferences and Hyprland environment files (`custom/env.conf` / `custom/env.lua`).
 
 ---
 
 ## 📦 What's Changed
-*   Implemented cursor theme directory scanner and dynamic application handlers in `src/main/index.ts`.
-*   Added cursor themes, size, and selected theme states in React frontend `src/renderer/src/App.tsx`.
-*   Integrated **Cursor Configuration** settings group layout inside the Settings modal.
-*   Updated `package.json`, `package-lock.json`, and `README.md` version badges to `0.1.11`.
+*   Implemented real-time Xcursor binary files parsing and PNG base64 generation in `src/main/index.ts`.
+*   Integrated a visual **Theme Preview** card under the Cursor Theme selection in `src/renderer/src/App.tsx`.
+*   Fixed Settings modal markup by adding `maxHeight`, `overflowY`, and `className="custom-scrollbar"` to the container.
+*   Bumped project version to `0.1.12` in `package.json`, `package-lock.json`, and `README.md`.
