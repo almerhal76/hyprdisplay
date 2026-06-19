@@ -1,6 +1,6 @@
 {
   "name": "hyprdisplay",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "description": "Desktop App for Hyprland Display Management",
   "repository": {
     "type": "git",
@@ -67,6 +67,10 @@
     "asarUnpack": [
       "resources/**"
     ],
+    "publish": {
+      "provider": "github",
+      "releaseNotesFile": "RELEASE_NOTES.md"
+    },
     "linux": {
       "target": [
         "AppImage"

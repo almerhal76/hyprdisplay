@@ -199,6 +199,20 @@ async function syncAndApplyHyprlandConfig(isStartup = false) {
 
   spawn('hyprctl', ['reload'])
 
+  // Apply saved cursor configuration if available
+  try {
+    const settingsPath = path.join(os.homedir(), '.config/nwg-react-displays/settings.json')
+    if (fs.existsSync(settingsPath)) {
+      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+      if (settings.cursor_theme && settings.cursor_size) {
+        console.log(`Restoring cursor theme: ${settings.cursor_theme} (${settings.cursor_size})`)
+        await execAsync(`hyprctl setcursor ${settings.cursor_theme} ${settings.cursor_size}`)
+      }
+    }
+  } catch (e) {
+    console.error('Failed to restore cursor settings during sync:', e)
+  }
+
   if (isStartup) {
     setTimeout(() => {
       if (mainWindow && !mainWindow.isDestroyed()) {
