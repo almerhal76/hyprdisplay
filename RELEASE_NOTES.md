@@ -1,33 +1,29 @@
-# 🚀 Release Notes - v0.1.12
+# 🚀 Release Notes - v0.1.13
 
-This release adds a Cursor Preview module to view active cursor themes (either via theme images or direct parsing of Xcursor binaries) and improves the Application Settings layout with vertical scrolling.
+This release fixes a critical layout application bug in multi-monitor setups, specifically where placing a secondary monitor to the left (negative X coordinates) would fail to apply instantly and get stuck on the right.
 
 ---
 
 ## 🇮🇩 Ringkasan Rilis (Bahasa Indonesia)
 
-Rilis versi `v0.1.12` ini menghadirkan fitur **Cursor Theme Preview** (Pratonton Tema Kursor) secara visual, serta membenahi layout **Application Settings** agar dapat di-scroll vertikal dan ramah layar kecil.
+Rilis versi `v0.1.13` ini memperbaiki bug kritis pada pemosisian layar di sistem multi-monitor, terutama saat meletakkan layar kedua di sebelah kiri (koordinat X negatif) yang sebelumnya gagal diterapkan secara instan dan tetap tertahan di sebelah kanan.
 
-### 🌟 Fitur Baru & Peningkatan
-*   **Visual Cursor Theme Preview**: Memperoleh pratonton kursor secara real-time. Program mencari file preview statis (`preview.gif`, dll.) di direktori tema atau mem-parsing binary file Xcursor (seperti `cursors/left_ptr`) secara manual untuk merender data pixel raw BGRA ke format PNG Data URL.
-*   **Scrollable Settings Layout**: Modal pengaturan aplikasi sekarang memiliki batasan tinggi (`maxHeight: 85vh`) dan scrollbar kustom (`overflowY: auto`), mencegah pemotongan UI pada layar berukuran kecil.
-*   **Pengaturan Tema & Ukuran Kursor**: Konfigurasi tema kursor yang instan, serta tersimpan persisten ke dalam preferensi internal aplikasi dan file konfigurasi lingkungan Hyprland (`custom/env.conf` / `custom/env.lua`).
+### 🌟 Perbaikan & Peningkatan
+*   **Instant Layout Application (Fix)**: Mengubah mekanisme penerapan tata letak monitor dengan mengeksekusi perintah dinamis `hyprctl keyword monitor` untuk setiap monitor sebelum melakukan `reload`. Hal ini memastikan tata letak monitor baru (termasuk koordinat negatif di sebelah kiri) langsung aktif seketika tanpa perlu dipancing menggunakan tool eksternal seperti `nwg-displays`.
+*   **Optimalisasi Sync Konfigurasi**: Meningkatkan sinkronisasi penataan layar agar tetap mempertahankan posisi yang diinginkan di memori session Hyprland secara persisten.
 
 ---
 
 ## 🇬🇧 Release Summary (English)
 
-Version `v0.1.12` introduces a visual **Cursor Theme Preview** and optimizes the **Application Settings** modal layout with native vertical scrolling for small screens.
+Version `v0.1.13` resolves a critical multi-monitor layout application bug, specifically when positioning a secondary display to the left of the primary display (involving negative coordinates).
 
-### 🌟 New Features & Enhancements
-*   **Visual Cursor Theme Preview**: Fetches and renders cursor previews in real-time. It locates static preview files (like `preview.gif`) or parses Xcursor binary files (like `cursors/left_ptr`) on the fly, extracting BGRA pixels to generate standard base64 PNG data URLs.
-*   **Scrollable Settings Layout**: The Settings modal now implements responsive height limits (`maxHeight: 85vh`) and custom scroll bars (`overflowY: auto`), preventing layout truncation on smaller monitors.
-*   **Cursor Configuration**: Seamlessly configures cursor theme and size. Changes apply instantly using `hyprctl setcursor` and persist securely in internal preferences and Hyprland environment files (`custom/env.conf` / `custom/env.lua`).
+### 🌟 Fixes & Enhancements
+*   **Instant Layout Application (Fix)**: Dynamically applies monitor configurations using `hyprctl keyword monitor` for each output prior to invoking `hyprctl reload`. This ensures all coordinate updates (including negative values) apply immediately without requiring external tools like `nwg-displays` to force repositioning.
+*   **Configuration Sync Optimization**: Streamlines layout persistence, ensuring session layout states match generated configuration parameters accurately.
 
 ---
 
 ## 📦 What's Changed
-*   Implemented real-time Xcursor binary files parsing and PNG base64 generation in `src/main/index.ts`.
-*   Integrated a visual **Theme Preview** card under the Cursor Theme selection in `src/renderer/src/App.tsx`.
-*   Fixed Settings modal markup by adding `maxHeight`, `overflowY`, and `className="custom-scrollbar"` to the container.
-*   Bumped project version to `0.1.12` in `package.json`, `package-lock.json`, and `README.md`.
+*   Updated `syncAndApplyHyprlandConfig` in `src/main/index.ts` to dynamically execute `hyprctl keyword monitor` for each configured screen output.
+*   Bumped project version to `0.1.13` in `package.json`, `package-lock.json`, and `README.md`.

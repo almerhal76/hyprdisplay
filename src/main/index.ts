@@ -179,6 +179,24 @@ async function syncAndApplyHyprlandConfig(isStartup = false) {
     }
   }
 
+  // Apply monitor configurations dynamically using hyprctl keyword to force-update positions/settings instantly
+  if (fs.existsSync(monitorsConfPath)) {
+    try {
+      const content = fs.readFileSync(monitorsConfPath, 'utf-8')
+      const lines = content.split('\n')
+      for (const line of lines) {
+        const trimmed = line.trim()
+        const match = trimmed.match(/^monitor\s*=\s*(.+)$/)
+        if (match) {
+          const rule = match[1].trim()
+          await execAsync(`hyprctl keyword monitor "${rule}"`)
+        }
+      }
+    } catch (e) {
+      console.error('Failed to apply monitor config using hyprctl keyword:', e)
+    }
+  }
+
   spawn('hyprctl', ['reload'])
 
   if (isStartup) {
