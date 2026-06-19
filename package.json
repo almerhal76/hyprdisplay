@@ -68,7 +68,9 @@
       "resources/**"
     ],
     "publish": {
-      "provider": "github",
+      "provider": "github"
+    },
+    "releaseInfo": {
       "releaseNotesFile": "RELEASE_NOTES.md"
     },
     "linux": {
